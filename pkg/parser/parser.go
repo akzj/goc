@@ -294,6 +294,9 @@ func (p *Parser) parseFieldList() []*FieldDecl {
 		field := p.parseFieldDeclaration()
 		if field != nil {
 			fields = append(fields, field)
+		} else {
+			// If we couldn't parse a field, advance to avoid infinite loop
+			p.advance()
 		}
 	}
 

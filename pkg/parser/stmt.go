@@ -513,23 +513,46 @@ func (p *Parser) ParseStatement() Statement {
 		return p.parseGotoStatement()
 	}
 	
-	if p.match(lexer.IDENT) && p.peek(1).Type == lexer.COLON {
+	// Check for label statement (ident followed by colon)
+	if p.current().Type == lexer.IDENT && p.peek(1).Type == lexer.COLON {
 		return p.parseLabelStatement()
 	}
 	
+	// Check for expression statement starting with identifier (e.g., x = 5;, x;, foo();)
+	// before trying declaration parsing. This avoids misinterpreting
+	// assignment expressions or simple identifier expressions as declarations.
+	if p.current().Type == lexer.IDENT {
+		next := p.peek(1)
+		// If followed by assignment operator or semicolon or LPAREN (function call),
+		// it's an expression statement, not a declaration
+		if next.Type == lexer.ASSIGN || next.Type == lexer.ADD_ASSIGN ||
+			next.Type == lexer.SUB_ASSIGN || next.Type == lexer.MUL_ASSIGN ||
+			next.Type == lexer.QUO_ASSIGN || next.Type == lexer.REM_ASSIGN ||
+			next.Type == lexer.AND_ASSIGN || next.Type == lexer.OR_ASSIGN ||
+			next.Type == lexer.XOR_ASSIGN || next.Type == lexer.SHL_ASSIGN ||
+			next.Type == lexer.SHR_ASSIGN ||
+			next.Type == lexer.SEMICOLON || next.Type == lexer.LPAREN {
+			return p.parseExpressionStatement()
+		}
+	}
+	
 	if p.isDeclaration() {
-		// ParseDeclaration consumes the full declaration including ';'.
-		// Do not fall through to parseExpressionStatement (would re-parse from
-		// the same line and can blow up the parser).
-		p.ParseDeclaration()
-		return nil
+		// Try to parse as declaration
+		decl := p.ParseDeclaration()
+		if decl != nil {
+			// Successfully parsed as declaration
+			return nil
+		}
+		// ParseDeclaration failed (e.g., "x = 5;" is not a declaration)
+		// Fall through to parseExpressionStatement
 	}
 
 	return p.parseExpressionStatement()
 }
 
 func (p *Parser) parseExpressionStatement() Statement {
-	if p.match(lexer.SEMICOLON) {
+	// Handle empty statement (just a semicolon)
+	if p.current().Type == lexer.SEMICOLON {
 		tok := p.advance()
 		return &ExprStmt{
 			pos: tok.Pos,
@@ -537,11 +560,26 @@ func (p *Parser) parseExpressionStatement() Statement {
 		}
 	}
 	
+	// Parse the expression
 	expr := p.ParseExpression()
-	endPos := expr.End()
 	
-	if p.match(lexer.SEMICOLON) {
-		endPos = p.advance().Pos
+	// If expression parsing failed, try to consume semicolon and return empty statement
+	if expr == nil {
+		if p.current().Type == lexer.SEMICOLON {
+			tok := p.advance()
+			return &ExprStmt{
+				pos: tok.Pos,
+				end: tok.Pos,
+			}
+		}
+		return nil
+	}
+	
+	// Get end position from expression, then consume semicolon
+	endPos := expr.End()
+	if p.current().Type == lexer.SEMICOLON {
+		tok := p.advance()
+		endPos = tok.Pos
 	}
 	
 	return &ExprStmt{
@@ -557,6 +595,11 @@ func (p *Parser) parseIfStatement() Statement {
 	cond := p.ParseExpression()
 	p.expect(lexer.RPAREN)
 	thenStmt := p.ParseStatement()
+	
+	// Handle nil then statement (error recovery)
+	if thenStmt == nil {
+		thenStmt = &CompoundStmt{pos: startTok.Pos, end: startTok.Pos}
+	}
 	
 	var elseStmt Statement
 	if p.match(lexer.ELSE) {
@@ -585,9 +628,16 @@ func (p *Parser) parseWhileStatement() Statement {
 	p.expect(lexer.RPAREN)
 	body := p.ParseStatement()
 	
+	// Handle nil body (error recovery)
+	if body == nil {
+		body = &CompoundStmt{pos: startTok.Pos, end: startTok.Pos}
+	}
+	
+	// Body can be any statement, not just CompoundStmt
+	// In C, while(cond) stmt; is valid (single statement without braces)
 	return &WhileStmt{
 		Cond: cond,
-		Body: body.(*CompoundStmt),
+		Body: body,
 		pos:  startTok.Pos,
 		end:  body.End(),
 	}
@@ -596,14 +646,21 @@ func (p *Parser) parseWhileStatement() Statement {
 func (p *Parser) parseDoWhileStatement() Statement {
 	startTok := p.expect(lexer.DO)
 	body := p.ParseStatement()
+	
+	// Handle nil body (error recovery)
+	if body == nil {
+		body = &CompoundStmt{pos: startTok.Pos, end: startTok.Pos}
+	}
+	
 	p.expect(lexer.WHILE)
 	p.expect(lexer.LPAREN)
 	cond := p.ParseExpression()
 	p.expect(lexer.RPAREN)
 	endPos := p.expect(lexer.SEMICOLON).Pos
 	
+	// Body can be any statement, not just CompoundStmt
 	return &DoWhileStmt{
-		Body: body.(*CompoundStmt),
+		Body: body,
 		Cond: cond,
 		pos:  startTok.Pos,
 		end:  endPos,
@@ -633,6 +690,11 @@ func (p *Parser) parseForStatement() Statement {
 	p.expect(lexer.RPAREN)
 	body := p.ParseStatement()
 	
+	// Handle nil body (error recovery)
+	if body == nil {
+		body = &CompoundStmt{pos: startTok.Pos, end: startTok.Pos}
+	}
+	
 	return &ForStmt{
 		Init:   init,
 		Cond:   cond,
@@ -650,9 +712,24 @@ func (p *Parser) parseSwitchStatement() Statement {
 	p.expect(lexer.RPAREN)
 	body := p.ParseStatement()
 	
+	// Switch body should be a compound statement, but handle gracefully if not
+	var compoundBody *CompoundStmt
+	if body != nil {
+		if cs, ok := body.(*CompoundStmt); ok {
+			compoundBody = cs
+		} else {
+			// Wrap single statement in compound statement
+			compoundBody = &CompoundStmt{
+				pos:        body.Pos(),
+				end:        body.End(),
+				Statements: []Statement{body},
+			}
+		}
+	}
+	
 	return &SwitchStmt{
 		Cond: cond,
-		Body: body.(*CompoundStmt),
+		Body: compoundBody,
 		pos:  startTok.Pos,
 		end:  body.End(),
 	}
@@ -668,7 +745,10 @@ func (p *Parser) parseCaseStatement() Statement {
 		stmt = p.ParseStatement()
 	}
 	
-	endPos := value.End()
+	endPos := startTok.Pos
+	if value != nil {
+		endPos = value.End()
+	}
 	if stmt != nil {
 		endPos = stmt.End()
 	}
