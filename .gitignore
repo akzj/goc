@@ -39,7 +39,7 @@ Thumbs.db
 # Debug files
 debug
 __debug_bin
-
+redis-source
 # Temporary files
 tmp/
 temp/
