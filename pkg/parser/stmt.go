@@ -462,3 +462,341 @@ func (c *CaseStmt) String() string {
 	}
 	return "CaseStmt(default:)"
 }
+
+// ParseStatement parses a statement.
+func (p *Parser) ParseStatement() Statement {
+	if p.match(lexer.LBRACE) {
+		return p.parseCompoundStatement()
+	}
+	
+	if p.match(lexer.IF) {
+		return p.parseIfStatement()
+	}
+	
+	if p.match(lexer.WHILE) {
+		return p.parseWhileStatement()
+	}
+	
+	if p.match(lexer.DO) {
+		return p.parseDoWhileStatement()
+	}
+	
+	if p.match(lexer.FOR) {
+		return p.parseForStatement()
+	}
+	
+	if p.match(lexer.SWITCH) {
+		return p.parseSwitchStatement()
+	}
+	
+	if p.match(lexer.CASE) {
+		return p.parseCaseStatement()
+	}
+	
+	if p.match(lexer.DEFAULT) {
+		return p.parseDefaultStatement()
+	}
+	
+	if p.match(lexer.BREAK) {
+		return p.parseBreakStatement()
+	}
+	
+	if p.match(lexer.CONTINUE) {
+		return p.parseContinueStatement()
+	}
+	
+	if p.match(lexer.RETURN) {
+		return p.parseReturnStatement()
+	}
+	
+	if p.match(lexer.GOTO) {
+		return p.parseGotoStatement()
+	}
+	
+	if p.match(lexer.IDENT) && p.peek(1).Type == lexer.COLON {
+		return p.parseLabelStatement()
+	}
+	
+	if p.isDeclaration() {
+		// ParseDeclaration consumes the full declaration including ';'.
+		// Do not fall through to parseExpressionStatement (would re-parse from
+		// the same line and can blow up the parser).
+		p.ParseDeclaration()
+		return nil
+	}
+
+	return p.parseExpressionStatement()
+}
+
+func (p *Parser) parseExpressionStatement() Statement {
+	if p.match(lexer.SEMICOLON) {
+		tok := p.advance()
+		return &ExprStmt{
+			pos: tok.Pos,
+			end: tok.Pos,
+		}
+	}
+	
+	expr := p.ParseExpression()
+	endPos := expr.End()
+	
+	if p.match(lexer.SEMICOLON) {
+		endPos = p.advance().Pos
+	}
+	
+	return &ExprStmt{
+		Expr: expr,
+		pos:  expr.Pos(),
+		end:  endPos,
+	}
+}
+
+func (p *Parser) parseIfStatement() Statement {
+	startTok := p.expect(lexer.IF)
+	p.expect(lexer.LPAREN)
+	cond := p.ParseExpression()
+	p.expect(lexer.RPAREN)
+	thenStmt := p.ParseStatement()
+	
+	var elseStmt Statement
+	if p.match(lexer.ELSE) {
+		p.advance()
+		elseStmt = p.ParseStatement()
+	}
+	
+	endPos := thenStmt.End()
+	if elseStmt != nil {
+		endPos = elseStmt.End()
+	}
+	
+	return &IfStmt{
+		Cond: cond,
+		Then: thenStmt,
+		Else: elseStmt,
+		pos:  startTok.Pos,
+		end:  endPos,
+	}
+}
+
+func (p *Parser) parseWhileStatement() Statement {
+	startTok := p.expect(lexer.WHILE)
+	p.expect(lexer.LPAREN)
+	cond := p.ParseExpression()
+	p.expect(lexer.RPAREN)
+	body := p.ParseStatement()
+	
+	return &WhileStmt{
+		Cond: cond,
+		Body: body.(*CompoundStmt),
+		pos:  startTok.Pos,
+		end:  body.End(),
+	}
+}
+
+func (p *Parser) parseDoWhileStatement() Statement {
+	startTok := p.expect(lexer.DO)
+	body := p.ParseStatement()
+	p.expect(lexer.WHILE)
+	p.expect(lexer.LPAREN)
+	cond := p.ParseExpression()
+	p.expect(lexer.RPAREN)
+	endPos := p.expect(lexer.SEMICOLON).Pos
+	
+	return &DoWhileStmt{
+		Body: body.(*CompoundStmt),
+		Cond: cond,
+		pos:  startTok.Pos,
+		end:  endPos,
+	}
+}
+
+func (p *Parser) parseForStatement() Statement {
+	startTok := p.expect(lexer.FOR)
+	p.expect(lexer.LPAREN)
+	
+	var init, cond, update Expr
+	
+	if !p.match(lexer.SEMICOLON) {
+		init = p.ParseExpression()
+	}
+	p.expect(lexer.SEMICOLON)
+	
+	if !p.match(lexer.SEMICOLON) {
+		cond = p.ParseExpression()
+	}
+	p.expect(lexer.SEMICOLON)
+	
+	if !p.match(lexer.RPAREN) {
+		update = p.ParseExpression()
+	}
+	
+	p.expect(lexer.RPAREN)
+	body := p.ParseStatement()
+	
+	return &ForStmt{
+		Init:   init,
+		Cond:   cond,
+		Update: update,
+		Body:   body,
+		pos:    startTok.Pos,
+		end:    body.End(),
+	}
+}
+
+func (p *Parser) parseSwitchStatement() Statement {
+	startTok := p.expect(lexer.SWITCH)
+	p.expect(lexer.LPAREN)
+	cond := p.ParseExpression()
+	p.expect(lexer.RPAREN)
+	body := p.ParseStatement()
+	
+	return &SwitchStmt{
+		Cond: cond,
+		Body: body.(*CompoundStmt),
+		pos:  startTok.Pos,
+		end:  body.End(),
+	}
+}
+
+func (p *Parser) parseCaseStatement() Statement {
+	startTok := p.expect(lexer.CASE)
+	value := p.ParseExpression()
+	p.expect(lexer.COLON)
+	
+	var stmt Statement
+	if !p.isEOF() && !p.match(lexer.CASE, lexer.DEFAULT, lexer.RBRACE) {
+		stmt = p.ParseStatement()
+	}
+	
+	endPos := value.End()
+	if stmt != nil {
+		endPos = stmt.End()
+	}
+	
+	return &CaseStmt{
+		Value: value,
+		Stmt:  stmt,
+		pos:   startTok.Pos,
+		end:   endPos,
+	}
+}
+
+func (p *Parser) parseDefaultStatement() Statement {
+	startTok := p.expect(lexer.DEFAULT)
+	p.expect(lexer.COLON)
+	
+	var stmt Statement
+	if !p.isEOF() && !p.match(lexer.CASE, lexer.DEFAULT, lexer.RBRACE) {
+		stmt = p.ParseStatement()
+	}
+	
+	endPos := startTok.Pos
+	if stmt != nil {
+		endPos = stmt.End()
+	}
+	
+	return &CaseStmt{
+		Stmt: stmt,
+		pos:  startTok.Pos,
+		end:  endPos,
+	}
+}
+
+func (p *Parser) parseBreakStatement() Statement {
+	startTok := p.expect(lexer.BREAK)
+	endPos := startTok.Pos
+	
+	if p.match(lexer.SEMICOLON) {
+		endPos = p.advance().Pos
+	}
+	
+	return &BreakStmt{
+		pos: startTok.Pos,
+		end: endPos,
+	}
+}
+
+func (p *Parser) parseContinueStatement() Statement {
+	startTok := p.expect(lexer.CONTINUE)
+	endPos := startTok.Pos
+	
+	if p.match(lexer.SEMICOLON) {
+		endPos = p.advance().Pos
+	}
+	
+	return &ContinueStmt{
+		pos: startTok.Pos,
+		end: endPos,
+	}
+}
+
+func (p *Parser) parseReturnStatement() Statement {
+	startTok := p.expect(lexer.RETURN)
+	
+	var expr Expr
+	endPos := startTok.Pos
+	
+	if !p.match(lexer.SEMICOLON) {
+		expr = p.ParseExpression()
+		if expr != nil {
+			endPos = expr.End()
+		}
+	}
+	
+	if p.match(lexer.SEMICOLON) {
+		endPos = p.advance().Pos
+	}
+	
+	return &ReturnStmt{
+		Value: expr,
+		pos:  startTok.Pos,
+		end:  endPos,
+	}
+}
+
+func (p *Parser) parseGotoStatement() Statement {
+	startTok := p.expect(lexer.GOTO)
+	
+	if !p.match(lexer.IDENT) {
+		p.errs.Error("E1001", "expected identifier after 'goto'", toErrhandPos(p.current().Pos))
+		return &GotoStmt{
+			pos: startTok.Pos,
+			end: startTok.Pos,
+		}
+	}
+	
+	labelTok := p.advance()
+	endPos := labelTok.Pos
+	
+	if p.match(lexer.SEMICOLON) {
+		endPos = p.advance().Pos
+	}
+	
+	return &GotoStmt{
+		Label: labelTok.Value,
+		pos:   startTok.Pos,
+		end:   endPos,
+	}
+}
+
+func (p *Parser) parseLabelStatement() Statement {
+	labelTok := p.expect(lexer.IDENT)
+	p.expect(lexer.COLON)
+	
+	var stmt Statement
+	if !p.isEOF() && !p.match(lexer.CASE, lexer.DEFAULT, lexer.RBRACE) {
+		stmt = p.ParseStatement()
+	}
+	
+	endPos := labelTok.Pos
+	if stmt != nil {
+		endPos = stmt.End()
+	}
+	
+	return &LabelStmt{
+		Label: labelTok.Value,
+		Stmt:  stmt,
+		pos:   labelTok.Pos,
+		end:   endPos,
+	}
+}

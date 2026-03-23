@@ -113,10 +113,10 @@ const (
 	DOUBLE    TokenType = "double"
 	SIGNED    TokenType = "signed"
 	UNSIGNED  TokenType = "unsigned"
-	_COMPLEX  TokenType = "_Complex"  // C99/C11
-	_IMAGINARY TokenType = "_Imaginary" // C99/C11
-	_BOOL     TokenType = "_Bool"     // C99/C11
-	_ATOMIC   TokenType = "_Atomic"   // C11
+	COMPLEX  TokenType = "_Complex"  // C99/C11
+	IMAGINARY TokenType = "_Imaginary" // C99/C11
+	BOOL     TokenType = "_Bool"     // C99/C11
+	ATOMIC   TokenType = "_Atomic"   // C11
 
 	// Structure/union/enum specifiers
 	STRUCT TokenType = "struct"
@@ -139,18 +139,18 @@ const (
 
 	// Function specifiers
 	INLINE     TokenType = "inline"     // C99/C11
-	_NORETURN  TokenType = "_Noreturn"  // C11
-	_THREAD_LOCAL TokenType = "_Thread_local" // C11
+	NORETURN  TokenType = "_Noreturn"  // C11
+	THREAD_LOCAL TokenType = "_Thread_local" // C11
 
 	// Alignment specifiers (C11)
-	_ALIGNAS TokenType = "_Alignas" // C11
-	_ALIGNOF TokenType = "_Alignof" // C11
+	ALIGNAS TokenType = "_Alignas" // C11
+	ALIGNOF TokenType = "_Alignof" // C11
 
 	// Generic selection (C11)
-	_GENERIC TokenType = "_Generic" // C11
+	GENERIC TokenType = "_Generic" // C11
 
 	// Static assertion (C11)
-	_STATIC_ASSERT TokenType = "_Static_assert" // C11
+	STATIC_ASSERT TokenType = "_Static_assert" // C11
 
 	// Other keywords
 	SIZEOF TokenType = "sizeof"
@@ -227,7 +227,7 @@ const (
 
 	// Special C11 tokens
 	HEADER_NAME TokenType = "HEADER_NAME" // <header> or "header" in #include
-	PRAGMA_OP   TokenType = "_Pragma"     // _Pragma operator (C99/C11)
+	PRAGMA_OP   TokenType = "PRAGMA_OP"     // PRAGMA_OP operator (C99/C11)
 )
 
 // Keywords maps keyword strings to their token types.
@@ -254,10 +254,10 @@ var Keywords = map[string]TokenType{
 	"double":    DOUBLE,
 	"signed":    SIGNED,
 	"unsigned":  UNSIGNED,
-	"_Complex":  _COMPLEX,
-	"_Imaginary": _IMAGINARY,
-	"_Bool":     _BOOL,
-	"_Atomic":   _ATOMIC,
+	"_Complex":  COMPLEX,
+	"_Imaginary": IMAGINARY,
+	"_Bool":     BOOL,
+	"_Atomic":   ATOMIC,
 
 	// Structure/union/enum specifiers
 	"struct": STRUCT,
@@ -280,22 +280,22 @@ var Keywords = map[string]TokenType{
 
 	// Function specifiers
 	"inline":       INLINE,
-	"_Noreturn":    _NORETURN,
-	"_Thread_local": _THREAD_LOCAL,
+	"_Noreturn":    NORETURN,
+	"_Thread_local": THREAD_LOCAL,
 
 	// Alignment specifiers (C11)
-	"_Alignas": _ALIGNAS,
-	"_Alignof": _ALIGNOF,
+	"_Alignas": ALIGNAS,
+	"_Alignof": ALIGNOF,
 
 	// Generic selection (C11)
-	"_Generic": _GENERIC,
+	"_Generic": GENERIC,
 
 	// Static assertion (C11)
-	"_Static_assert": _STATIC_ASSERT,
+	"_Static_assert": STATIC_ASSERT,
 
 	// Other keywords
 	"sizeof": SIZEOF,
-	"_Pragma": PRAGMA_OP,
+	"PRAGMA_OP": PRAGMA_OP,
 }
 
 // IsKeyword returns true if the token type is a C11 keyword.
