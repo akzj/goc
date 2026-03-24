@@ -116,9 +116,9 @@ func (g *IRGenerator) generateFunctionDecl(decl *parser.FunctionDecl) error {
 
 	// If function has a body, generate IR for it
 	if decl.Body != nil {
-		// Create entry block
+		// Create entry block (no label - function name serves as entry point)
 		entryBlock := &BasicBlock{
-			Label:  "entry",
+			Label:  "",
 			Instrs: make([]Instruction, 0),
 			Preds:  make([]*BasicBlock, 0),
 			Succs:  make([]*BasicBlock, 0),
@@ -1201,9 +1201,9 @@ func (g *IRGenerator) NewLabel() string {
 // Emit emits an instruction to the current block.
 func (g *IRGenerator) Emit(instr Instruction) {
 	if g.currentBlock == nil {
-		// Create a default block if none exists
+		// Create a default block if none exists (no label - function name serves as entry point)
 		g.currentBlock = &BasicBlock{
-			Label:  "entry",
+			Label:  "",
 			Instrs: make([]Instruction, 0),
 			Preds:  make([]*BasicBlock, 0),
 			Succs:  make([]*BasicBlock, 0),

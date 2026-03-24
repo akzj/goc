@@ -283,6 +283,7 @@ func TestTableDrivenSuccessfulCompilation(t *testing.T) {
 		"operators.c",
 		"empty.c",
 		"comments.c",
+		"functions.c",
 	}
 
 	for _, prog := range programs {

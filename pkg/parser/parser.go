@@ -128,7 +128,7 @@ func (p *Parser) ParseDeclaration() Declaration {
 				p.expect(lexer.SEMICOLON)
 				return p.createFunctionDecl(specifiers, name, namePos, params, nil)
 			}
-		} else if p.match(lexer.ASSIGN) || p.match(lexer.SEMICOLON) || p.match(lexer.COMMA) {
+		} else if p.current().Type == lexer.ASSIGN || p.current().Type == lexer.SEMICOLON || p.current().Type == lexer.COMMA {
 			// Variable declaration
 			var init Expr
 			if p.match(lexer.ASSIGN) {
@@ -375,10 +375,23 @@ func (p *Parser) parseEnumValues() []*EnumValue {
 
 // createFunctionDecl creates a FunctionDecl from parsed components.
 func (p *Parser) createFunctionDecl(specs *DeclSpecifiers, name string, namePos lexer.Position, params []*ParamDecl, body *CompoundStmt) *FunctionDecl {
+	retType := p.specifiersToType(specs)
+	paramTypes := make([]Type, 0, len(params))
+	for _, param := range params {
+		if param != nil && param.Type != nil {
+			paramTypes = append(paramTypes, param.Type)
+		} else {
+			paramTypes = append(paramTypes, nil)
+		}
+	}
+	fnType := &FuncType{
+		Return: retType,
+		Params: paramTypes,
+	}
 	return &FunctionDecl{
 		pos:      namePos,
 		end:      namePos,
-		Type:     p.specifiersToType(specs),
+		Type:     fnType,
 		Name:     name,
 		Params:   params,
 		Body:     body,
@@ -588,6 +601,11 @@ func (p *Parser) isDeclaration() bool {
 	// Identifier (could be typedef name or K&R function declaration)
 	if t == lexer.IDENT {
 		// Look ahead to determine if it's a declaration
+		// If followed by DOT or ARROW, it's member access (expression), not a declaration
+		next := p.peek(1)
+		if next.Type == lexer.DOT || next.Type == lexer.ARROW {
+			return false
+		}
 		return true
 	}
 	

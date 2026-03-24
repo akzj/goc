@@ -4,6 +4,7 @@ package parser
 
 import (
 	"fmt"
+	
 	"strings"
 
 	"github.com/akzj/goc/pkg/lexer"
@@ -278,6 +279,40 @@ func (s *SizeofExpr) String() string {
 }
 
 // AssignExpr represents an assignment (a = b, a += b, etc.).
+
+// CommaExpr represents a comma expression (a, b, c).
+// Comma expressions evaluate left-to-right and return the rightmost value.
+type CommaExpr struct {
+	// Exprs is the list of expressions in order.
+	Exprs []Expr
+	// pos is the starting position.
+	pos lexer.Position
+	// end is the ending position.
+	end lexer.Position
+}
+
+// exprNode implements Expr.
+func (c *CommaExpr) exprNode() {}
+
+// Pos returns the starting position.
+func (c *CommaExpr) Pos() lexer.Position {
+	return c.pos
+}
+
+// End returns the ending position.
+func (c *CommaExpr) End() lexer.Position {
+	return c.end
+}
+
+// String returns a string representation.
+func (c *CommaExpr) String() string {
+	exprs := make([]string, len(c.Exprs))
+	for i, e := range c.Exprs {
+		exprs[i] = e.String()
+	}
+	return fmt.Sprintf("CommaExpr{exprs=[%s]}", strings.Join(exprs, ", "))
+}
+
 type AssignExpr struct {
 	// Op is the assignment operator (=, +=, -=, etc.).
 	Op lexer.TokenType
@@ -504,19 +539,27 @@ func (i *InitListExpr) String() string {
 }
 
 // ParseExpression parses an expression (entry point).
-// Expression = AssignmentExpression .
+// Expression = CommaExpression .
 func (p *Parser) ParseExpression() Expr {
-	return p.parseAssignment()
+	return p.parseComma()
 }
 
 func (p *Parser) parseAssignment() Expr {
 	left := p.parseConditional()
+	if left == nil {
+		return nil
+	}
 	
 	for p.match(lexer.ASSIGN, lexer.ADD_ASSIGN, lexer.SUB_ASSIGN, lexer.MUL_ASSIGN,
 		lexer.QUO_ASSIGN, lexer.REM_ASSIGN, lexer.SHL_ASSIGN, lexer.SHR_ASSIGN,
 		lexer.AND_ASSIGN, lexer.OR_ASSIGN, lexer.XOR_ASSIGN) {
 		op := p.advance().Type
 		right := p.parseConditional()
+		if right == nil {
+			// Assignment operator without right-hand side
+			// Return what we have so far
+			return left
+		}
 		left = &AssignExpr{
 			Op:    op,
 			Left:  left,
@@ -527,6 +570,37 @@ func (p *Parser) parseAssignment() Expr {
 	}
 	
 	return left
+}
+
+// parseComma handles comma expressions (a, b, c).
+// Comma expressions evaluate left-to-right and return the rightmost value.
+func (p *Parser) parseComma() Expr {
+	left := p.parseAssignment()
+	if left == nil {
+		return nil
+	}
+	exprs := []Expr{left}
+	
+	for p.match(lexer.COMMA) {
+		p.advance()
+		right := p.parseAssignment()
+		if right == nil {
+			// Comma followed by nothing valid (e.g., comma before closing paren)
+			// Return just the expressions we have so far
+			break
+		}
+		exprs = append(exprs, right)
+	}
+	
+	if len(exprs) == 1 {
+		return exprs[0]
+	}
+	
+	return &CommaExpr{
+		Exprs: exprs,
+		pos:   exprs[0].Pos(),
+		end:   exprs[len(exprs)-1].End(),
+	}
 }
 
 func (p *Parser) parseConditional() Expr {
@@ -552,10 +626,16 @@ func (p *Parser) parseConditional() Expr {
 
 func (p *Parser) parseLogicalOr() Expr {
 	left := p.parseLogicalAnd()
+	if left == nil {
+		return nil
+	}
 	
 	for p.match(lexer.LOR) {
 		op := p.advance().Type
 		right := p.parseLogicalAnd()
+		if right == nil {
+			return left
+		}
 		left = &BinaryExpr{
 			Op:    op,
 			Left:  left,
@@ -570,10 +650,16 @@ func (p *Parser) parseLogicalOr() Expr {
 
 func (p *Parser) parseLogicalAnd() Expr {
 	left := p.parseBitwiseOr()
+	if left == nil {
+		return nil
+	}
 	
 	for p.match(lexer.LAND) {
 		op := p.advance().Type
 		right := p.parseBitwiseOr()
+		if right == nil {
+			return left
+		}
 		left = &BinaryExpr{
 			Op:    op,
 			Left:  left,
@@ -588,10 +674,16 @@ func (p *Parser) parseLogicalAnd() Expr {
 
 func (p *Parser) parseBitwiseOr() Expr {
 	left := p.parseBitwiseXor()
+	if left == nil {
+		return nil
+	}
 	
 	for p.match(lexer.OR) {
 		op := p.advance().Type
 		right := p.parseBitwiseXor()
+		if right == nil {
+			return left
+		}
 		left = &BinaryExpr{
 			Op:    op,
 			Left:  left,
@@ -606,10 +698,16 @@ func (p *Parser) parseBitwiseOr() Expr {
 
 func (p *Parser) parseBitwiseXor() Expr {
 	left := p.parseBitwiseAnd()
+	if left == nil {
+		return nil
+	}
 	
 	for p.match(lexer.XOR) {
 		op := p.advance().Type
 		right := p.parseBitwiseAnd()
+		if right == nil {
+			return left
+		}
 		left = &BinaryExpr{
 			Op:    op,
 			Left:  left,
@@ -624,10 +722,16 @@ func (p *Parser) parseBitwiseXor() Expr {
 
 func (p *Parser) parseBitwiseAnd() Expr {
 	left := p.parseEquality()
+	if left == nil {
+		return nil
+	}
 	
 	for p.match(lexer.AND) {
 		op := p.advance().Type
 		right := p.parseEquality()
+		if right == nil {
+			return left
+		}
 		left = &BinaryExpr{
 			Op:    op,
 			Left:  left,
@@ -642,10 +746,16 @@ func (p *Parser) parseBitwiseAnd() Expr {
 
 func (p *Parser) parseEquality() Expr {
 	left := p.parseRelational()
+	if left == nil {
+		return nil
+	}
 	
 	for p.match(lexer.EQL, lexer.NEQ) {
 		op := p.advance().Type
 		right := p.parseRelational()
+		if right == nil {
+			return left
+		}
 		left = &BinaryExpr{
 			Op:    op,
 			Left:  left,
@@ -660,10 +770,16 @@ func (p *Parser) parseEquality() Expr {
 
 func (p *Parser) parseRelational() Expr {
 	left := p.parseShift()
+	if left == nil {
+		return nil
+	}
 	
 	for p.match(lexer.LEQ, lexer.GEQ, lexer.GTR, lexer.LSS) {
 		op := p.advance().Type
 		right := p.parseShift()
+		if right == nil {
+			return left
+		}
 		left = &BinaryExpr{
 			Op:    op,
 			Left:  left,
@@ -678,10 +794,16 @@ func (p *Parser) parseRelational() Expr {
 
 func (p *Parser) parseShift() Expr {
 	left := p.parseAdditive()
+	if left == nil {
+		return nil
+	}
 	
 	for p.match(lexer.SHL, lexer.SHR) {
 		op := p.advance().Type
 		right := p.parseAdditive()
+		if right == nil {
+			return left
+		}
 		left = &BinaryExpr{
 			Op:    op,
 			Left:  left,
@@ -696,10 +818,16 @@ func (p *Parser) parseShift() Expr {
 
 func (p *Parser) parseAdditive() Expr {
 	left := p.parseMultiplicative()
+	if left == nil {
+		return nil
+	}
 	
 	for p.match(lexer.ADD, lexer.SUB) {
 		op := p.advance().Type
 		right := p.parseMultiplicative()
+		if right == nil {
+			return left
+		}
 		left = &BinaryExpr{
 			Op:    op,
 			Left:  left,
@@ -714,10 +842,16 @@ func (p *Parser) parseAdditive() Expr {
 
 func (p *Parser) parseMultiplicative() Expr {
 	left := p.parseCast()
+	if left == nil {
+		return nil
+	}
 	
 	for p.match(lexer.MUL, lexer.QUO, lexer.REM) {
 		op := p.advance().Type
 		right := p.parseCast()
+		if right == nil {
+			return left
+		}
 		left = &BinaryExpr{
 			Op:    op,
 			Left:  left,
@@ -731,7 +865,7 @@ func (p *Parser) parseMultiplicative() Expr {
 }
 
 func (p *Parser) parseCast() Expr {
-	if p.match(lexer.LPAREN) {
+	if p.current().Type == lexer.LPAREN {
 		savePos := p.pos
 		p.advance()
 		
@@ -754,20 +888,25 @@ func (p *Parser) parseCast() Expr {
 	return p.parseUnary()
 }
 
+func (p *Parser) isTypeSpecifier() bool {
+	t := p.current().Type
+	return t == lexer.VOID || t == lexer.CHAR || t == lexer.SHORT || t == lexer.INT || t == lexer.LONG ||
+		t == lexer.FLOAT || t == lexer.DOUBLE || t == lexer.SIGNED || t == lexer.UNSIGNED || t == lexer.BOOL ||
+		t == lexer.STRUCT || t == lexer.UNION || t == lexer.ENUM
+}
+
 func (p *Parser) isTypeName() bool {
 	savePos := p.pos
 	
-	for p.match(lexer.VOID, lexer.CHAR, lexer.SHORT, lexer.INT, lexer.LONG,
-		lexer.FLOAT, lexer.DOUBLE, lexer.SIGNED, lexer.UNSIGNED, lexer.BOOL,
-		lexer.STRUCT, lexer.UNION, lexer.ENUM, lexer.IDENT) {
+	for p.isTypeSpecifier() {
 		p.advance()
-		if p.match(lexer.STRUCT, lexer.UNION, lexer.ENUM) {
+		if p.current().Type == lexer.STRUCT || p.current().Type == lexer.UNION || p.current().Type == lexer.ENUM {
 			p.advance()
-			if p.match(lexer.IDENT) {
+			if p.current().Type == lexer.IDENT {
 				p.advance()
 			}
 		}
-		for p.match(lexer.MUL) {
+		for p.current().Type == lexer.MUL {
 			p.advance()
 		}
 	}
@@ -806,7 +945,7 @@ func (p *Parser) parseUnary() Expr {
 }
 
 func (p *Parser) parseSizeof(startPos lexer.Position) Expr {
-	if p.match(lexer.LPAREN) {
+	if p.current().Type == lexer.LPAREN {
 		p.advance()
 		
 		if p.isTypeName() {
@@ -841,9 +980,12 @@ func (p *Parser) parseSizeof(startPos lexer.Position) Expr {
 
 func (p *Parser) parsePostfix() Expr {
 	expr := p.parsePrimary()
+	if expr == nil {
+		return nil
+	}
 	
 	for {
-		if p.match(lexer.LPAREN) {
+		if p.current().Type == lexer.LPAREN {
 			p.advance()
 			args := p.parseArgumentList()
 			p.expect(lexer.RPAREN)
@@ -866,13 +1008,13 @@ func (p *Parser) parsePostfix() Expr {
 				end:   p.current().Pos,
 			}
 		} else if p.match(lexer.DOT) {
-			p.advance()
 			if !p.match(lexer.IDENT) {
 				p.errs.Error("E1001", "expected identifier after '.'", toErrhandPos(p.current().Pos))
 				return expr
 			}
-			field := p.advance().Value
+			field := p.current().Value
 			endPos := p.current().Pos
+			p.advance()
 			
 			expr = &MemberExpr{
 				Object:    expr,
@@ -882,13 +1024,13 @@ func (p *Parser) parsePostfix() Expr {
 				end:       endPos,
 			}
 		} else if p.match(lexer.ARROW) {
-			p.advance()
 			if !p.match(lexer.IDENT) {
 				p.errs.Error("E1001", "expected identifier after '->'", toErrhandPos(p.current().Pos))
 				return expr
 			}
-			field := p.advance().Value
+			field := p.current().Value
 			endPos := p.current().Pos
+			p.advance()
 			
 			expr = &MemberExpr{
 				Object:    expr,
@@ -918,23 +1060,25 @@ func (p *Parser) parsePostfix() Expr {
 
 func (p *Parser) parseArgumentList() []Expr {
 	args := []Expr{}
-	
+
 	if p.current().Type == lexer.RPAREN {
 		return args
 	}
-	
-	args = append(args, p.ParseExpression())
-	
+
+	// C: each argument is an assignment-expression, not a full comma-expression.
+	// Using ParseExpression would merge "f(1, 2)" into one comma expr and one arg.
+	args = append(args, p.parseAssignment())
+
 	for p.current().Type == lexer.COMMA {
-		p.advance()  // Consume comma
-		args = append(args, p.ParseExpression())
+		p.advance()
+		args = append(args, p.parseAssignment())
 	}
-	
+
 	return args
 }
 
 func (p *Parser) parsePrimary() Expr {
-	if p.match(lexer.IDENT) {
+	if p.current().Type == lexer.IDENT {
 		tok := p.advance()
 		return &IdentExpr{
 			Name: tok.Value,
@@ -943,7 +1087,7 @@ func (p *Parser) parsePrimary() Expr {
 		}
 	}
 	
-	if p.match(lexer.INT_LIT) {
+	if p.current().Type == lexer.INT_LIT {
 		tok := p.advance()
 		value := p.parseIntLiteral(tok.Value)
 		suffix := ""
@@ -963,7 +1107,7 @@ func (p *Parser) parsePrimary() Expr {
 		}
 	}
 	
-	if p.match(lexer.FLOAT_LIT) {
+	if p.current().Type == lexer.FLOAT_LIT {
 		tok := p.advance()
 		value := p.parseFloatLiteral(tok.Value)
 		suffix := ""
@@ -983,7 +1127,7 @@ func (p *Parser) parsePrimary() Expr {
 		}
 	}
 	
-	if p.match(lexer.CHAR_LIT) {
+	if p.current().Type == lexer.CHAR_LIT {
 		tok := p.advance()
 		value := p.parseCharLiteral(tok.Value)
 		
@@ -995,7 +1139,7 @@ func (p *Parser) parsePrimary() Expr {
 		}
 	}
 	
-	if p.match(lexer.STRING_LIT) {
+	if p.current().Type == lexer.STRING_LIT {
 		tok := p.advance()
 		value := p.parseStringLiteral(tok.Value)
 		
@@ -1007,11 +1151,19 @@ func (p *Parser) parsePrimary() Expr {
 		}
 	}
 	
-	if p.match(lexer.LPAREN) {
+	if p.current().Type == lexer.LPAREN {
 		p.advance()
 		expr := p.ParseExpression()
 		p.expect(lexer.RPAREN)
 		return expr
+	}
+	
+	// Return nil for tokens that indicate end of expression (not errors)
+	// This allows the caller to handle the situation appropriately
+	if p.current().Type == lexer.SEMICOLON || p.current().Type == lexer.RBRACE ||
+		p.current().Type == lexer.RPAREN || p.current().Type == lexer.RBRACK ||
+		p.current().Type == lexer.COLON || p.current().Type == lexer.COMMA {
+		return nil
 	}
 	
 	p.errs.Error("E1001", fmt.Sprintf("unexpected token %q in expression", p.current().Value), toErrhandPos(p.current().Pos))

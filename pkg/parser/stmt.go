@@ -465,51 +465,51 @@ func (c *CaseStmt) String() string {
 
 // ParseStatement parses a statement.
 func (p *Parser) ParseStatement() Statement {
-	if p.match(lexer.LBRACE) {
+	if p.current().Type == lexer.LBRACE {
 		return p.parseCompoundStatement()
 	}
 	
-	if p.match(lexer.IF) {
+	if p.current().Type == lexer.IF {
 		return p.parseIfStatement()
 	}
 	
-	if p.match(lexer.WHILE) {
+	if p.current().Type == lexer.WHILE {
 		return p.parseWhileStatement()
 	}
 	
-	if p.match(lexer.DO) {
+	if p.current().Type == lexer.DO {
 		return p.parseDoWhileStatement()
 	}
 	
-	if p.match(lexer.FOR) {
+	if p.current().Type == lexer.FOR {
 		return p.parseForStatement()
 	}
 	
-	if p.match(lexer.SWITCH) {
+	if p.current().Type == lexer.SWITCH {
 		return p.parseSwitchStatement()
 	}
 	
-	if p.match(lexer.CASE) {
+	if p.current().Type == lexer.CASE {
 		return p.parseCaseStatement()
 	}
 	
-	if p.match(lexer.DEFAULT) {
+	if p.current().Type == lexer.DEFAULT {
 		return p.parseDefaultStatement()
 	}
 	
-	if p.match(lexer.BREAK) {
+	if p.current().Type == lexer.BREAK {
 		return p.parseBreakStatement()
 	}
 	
-	if p.match(lexer.CONTINUE) {
+	if p.current().Type == lexer.CONTINUE {
 		return p.parseContinueStatement()
 	}
 	
-	if p.match(lexer.RETURN) {
+	if p.current().Type == lexer.RETURN {
 		return p.parseReturnStatement()
 	}
 	
-	if p.match(lexer.GOTO) {
+	if p.current().Type == lexer.GOTO {
 		return p.parseGotoStatement()
 	}
 	
@@ -518,20 +518,21 @@ func (p *Parser) ParseStatement() Statement {
 		return p.parseLabelStatement()
 	}
 	
-	// Check for expression statement starting with identifier (e.g., x = 5;, x;, foo();)
+	// Check for expression statement starting with identifier (e.g., x = 5;, x;, foo();, p.x = 1;)
 	// before trying declaration parsing. This avoids misinterpreting
-	// assignment expressions or simple identifier expressions as declarations.
+	// assignment expressions, member access, or simple identifier expressions as declarations.
 	if p.current().Type == lexer.IDENT {
 		next := p.peek(1)
-		// If followed by assignment operator or semicolon or LPAREN (function call),
-		// it's an expression statement, not a declaration
+		// If followed by assignment operator, semicolon, LPAREN (function call),
+		// or DOT/ARROW (member access), it's an expression statement, not a declaration
 		if next.Type == lexer.ASSIGN || next.Type == lexer.ADD_ASSIGN ||
 			next.Type == lexer.SUB_ASSIGN || next.Type == lexer.MUL_ASSIGN ||
 			next.Type == lexer.QUO_ASSIGN || next.Type == lexer.REM_ASSIGN ||
 			next.Type == lexer.AND_ASSIGN || next.Type == lexer.OR_ASSIGN ||
 			next.Type == lexer.XOR_ASSIGN || next.Type == lexer.SHL_ASSIGN ||
 			next.Type == lexer.SHR_ASSIGN ||
-			next.Type == lexer.SEMICOLON || next.Type == lexer.LPAREN {
+			next.Type == lexer.SEMICOLON || next.Type == lexer.LPAREN ||
+			next.Type == lexer.DOT || next.Type == lexer.ARROW {
 			return p.parseExpressionStatement()
 		}
 	}
@@ -787,7 +788,7 @@ func (p *Parser) parseBreakStatement() Statement {
 	endPos := startTok.Pos
 	
 	if p.match(lexer.SEMICOLON) {
-		endPos = p.advance().Pos
+		endPos = p.current().Pos
 	}
 	
 	return &BreakStmt{
@@ -801,7 +802,7 @@ func (p *Parser) parseContinueStatement() Statement {
 	endPos := startTok.Pos
 	
 	if p.match(lexer.SEMICOLON) {
-		endPos = p.advance().Pos
+		endPos = p.current().Pos
 	}
 	
 	return &ContinueStmt{
@@ -824,7 +825,8 @@ func (p *Parser) parseReturnStatement() Statement {
 	}
 	
 	if p.match(lexer.SEMICOLON) {
-		endPos = p.advance().Pos
+		endPos = p.current().Pos
+		// match() already consumed the semicolon, no need to advance again
 	}
 	
 	return &ReturnStmt{
@@ -849,7 +851,7 @@ func (p *Parser) parseGotoStatement() Statement {
 	endPos := labelTok.Pos
 	
 	if p.match(lexer.SEMICOLON) {
-		endPos = p.advance().Pos
+		endPos = p.current().Pos
 	}
 	
 	return &GotoStmt{

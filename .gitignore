@@ -6,6 +6,8 @@
 *.dylib
 bin/
 /goc
+/goc_test
+*.orig
 
 # Test binary, built with `go test -c`
 *.test

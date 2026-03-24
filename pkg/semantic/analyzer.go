@@ -99,10 +99,19 @@ func (a *SemanticAnalyzer) analyzeFunctionDecl(decl *parser.FunctionDecl) error 
 		flags |= FlagExtern
 	}
 
+	// decl.Type is already a *parser.FuncType from the parser with correct Return and Params
+	funcType, ok := decl.Type.(*parser.FuncType)
+	if !ok {
+		a.errors.Error(errhand.ErrInvalidType,
+			fmt.Sprintf("function %s has invalid type", decl.Name),
+			toErrhandPos(decl.Pos()))
+		return fmt.Errorf("function %s has invalid type", decl.Name)
+	}
+
 	symbol := &Symbol{
 		Name:     decl.Name,
 		Kind:     SymbolFunction,
-		Type:     decl.Type,
+		Type:     funcType,
 		Position: decl.Pos(),
 		Flags:    flags,
 	}
