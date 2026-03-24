@@ -848,7 +848,7 @@ func TestLinkerCreateSectionHeaders(t *testing.T) {
 
 	l.sections = append(l.sections, textSec)
 
-	headers, data := l.createSectionHeaders()
+	headers, data := l.createSectionHeaders(0)
 
 	if len(headers) < 1 {
 		t.Errorf("Expected at least 1 section header, got %d", len(headers))
@@ -1371,7 +1371,7 @@ func TestLinkerCreateSectionHeadersWithSymbols(t *testing.T) {
 
 	l.sections = append(l.sections, textSec)
 
-	headers, data := l.createSectionHeaders()
+	headers, data := l.createSectionHeaders(0)
 
 	if len(headers) < 4 {
 		t.Errorf("Expected at least 4 section headers, got %d", len(headers))

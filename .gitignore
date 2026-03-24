@@ -5,6 +5,12 @@
 *.so
 *.dylib
 bin/
+# Ad-hoc compiled C tests at repo root (keep *.c sources)
+/test_setjmp
+/test_multi_dlsym
+/test_dlfcn_full
+/test_dlfcn_standalone
+/test_dlfcn/test_dlfcn_fixed
 /goc
 /goc_test
 *.orig
@@ -19,6 +25,7 @@ coverage.txt
 coverage.html
 coverage_report.html
 master.zip
+working_memory/
 
 # Dependency directories
 vendor/

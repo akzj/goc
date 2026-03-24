@@ -37,6 +37,10 @@ type Linker struct {
 	stringTable *StringTable
 	// sectionStringTable is the string table for section names.
 	sectionStringTable *StringTable
+	// libraryPaths is the list of library search paths (-L flags).
+	libraryPaths []string
+	// loadedLibraries tracks which libraries have been loaded.
+	loadedLibraries map[string]bool
 }
 
 // ObjectFile represents a parsed object file.
@@ -87,6 +91,8 @@ func NewLinker(errorHandler *errhand.ErrorHandler) *Linker {
 		nextAddr:           0x400000,
 		stringTable:        NewStringTable(),
 		sectionStringTable: NewStringTable(),
+		libraryPaths:       make([]string, 0),
+		loadedLibraries:    make(map[string]bool),
 	}
 }
 
@@ -106,6 +112,7 @@ func (st *StringTable) Add(s string) uint32 {
 		return idx
 	}
 	idx := uint32(len(st.data))
+	fmt.Printf("DEBUG StringTable.Add: %q at idx=%d\n", s, idx)
 	st.data = append(st.data, []byte(s)...)
 	st.data = append(st.data, 0) // Null terminator
 	st.strings[s] = idx
@@ -128,6 +135,13 @@ func (l *Linker) Link(objects []ObjectFile, libs []string) ([]byte, error) {
 	for _, obj := range objects {
 		if err := l.loadObjectFile(obj); err != nil {
 			return nil, fmt.Errorf("loading object file %s: %w", obj.Name, err)
+		}
+	}
+
+	// Load all libraries
+	for _, lib := range libs {
+		if err := l.loadLibrary(lib); err != nil {
+			return nil, fmt.Errorf("loading library %s: %w", lib, err)
 		}
 	}
 
@@ -426,9 +440,6 @@ func (l *Linker) Emit() ([]byte, error) {
 	// Create program headers
 	programHeaders := l.createProgramHeaders()
 
-	// Create section headers
-	sectionHeaders, sectionData := l.createSectionHeaders()
-
 	// Calculate offsets
 	headerSize := uint64(ELFHeaderSize())
 	phSize := uint64(len(programHeaders) * ProgramHeaderSize())
@@ -436,19 +447,29 @@ func (l *Linker) Emit() ([]byte, error) {
 	// Section data starts after headers
 	sectionDataOffset := headerSize + phSize
 
+	// Create section headers
+	sectionHeaders, sectionData := l.createSectionHeaders(sectionDataOffset)
+
 	// Update ELF header
 	elfHeader.Shoff = sectionDataOffset + uint64(len(sectionData))
 	elfHeader.Shnum = uint16(len(sectionHeaders))
-	elfHeader.Shstrndx = uint16(l.sectionStringTable.Add(".shstrtab"))
+	// Shstrndx is the section header index of .shstrtab (last section)
+	elfHeader.Shstrndx = uint16(len(sectionHeaders) - 1)
+
+	// Set entry point address
+	entrySym := l.symbols.Get(l.entry)
+	if entrySym != nil && entrySym.IsDefined() {
+		elfHeader.Entry = entrySym.Value
+	}
 
 	// Write ELF header
-	if err := elfHeader.WriteTo(&buf); err != nil {
+	if _, err := elfHeader.WriteTo(&buf); err != nil {
 		return nil, fmt.Errorf("writing ELF header: %w", err)
 	}
 
 	// Write program headers
 	for _, ph := range programHeaders {
-		if err := ph.WriteTo(&buf); err != nil {
+		if _, err := ph.WriteTo(&buf); err != nil {
 			return nil, fmt.Errorf("writing program header: %w", err)
 		}
 	}
@@ -458,7 +479,7 @@ func (l *Linker) Emit() ([]byte, error) {
 
 	// Write section headers
 	for _, sh := range sectionHeaders {
-		if err := sh.WriteTo(&buf); err != nil {
+		if _, err := sh.WriteTo(&buf); err != nil {
 			return nil, fmt.Errorf("writing section header: %w", err)
 		}
 	}
@@ -533,7 +554,7 @@ func (l *Linker) createProgramHeaders() []*ProgramHeader {
 }
 
 // createSectionHeaders creates section headers and combines section data.
-func (l *Linker) createSectionHeaders() ([]*SectionHeader, []byte) {
+func (l *Linker) createSectionHeaders(sectionDataOffset uint64) ([]*SectionHeader, []byte) {
 	var headers []*SectionHeader
 	var sectionData bytes.Buffer
 
@@ -553,7 +574,7 @@ func (l *Linker) createSectionHeaders() ([]*SectionHeader, []byte) {
 		}
 
 		sh.Addr = section.Addr
-		sh.Offset = uint64(sectionData.Len())
+		sh.Offset = sectionDataOffset + uint64(sectionData.Len())
 		sh.Size = section.Size()
 		sh.Addralign = 0x10 // Default alignment
 
@@ -565,29 +586,25 @@ func (l *Linker) createSectionHeaders() ([]*SectionHeader, []byte) {
 		headers = append(headers, sh)
 	}
 
-	// Add symbol table section
+	// Add symbol table section (offset will be set after writing data)
 	symTabIdx := uint32(len(headers))
 	symTabSH := NewSectionHeaderSymTab(l.sectionStringTable.Add(".symtab"), 0)
 	symTabSH.Link = symTabIdx + 1 // Link to string table
 	headers = append(headers, symTabSH)
 
-	// Add string table section
+	// Add string table section (offset will be set after writing data)
 	strTabSH := NewSectionHeaderStrTab(l.sectionStringTable.Add(".strtab"))
-	strTabSH.Offset = uint64(sectionData.Len())
-	strTabSH.Size = l.stringTable.Size()
 	headers = append(headers, strTabSH)
 
-	// Add section header string table
+	// Add section header string table (offset will be set after writing data)
 	shStrTabSH := NewSectionHeaderStrTab(l.sectionStringTable.Add(".shstrtab"))
-	shStrTabSH.Offset = uint64(sectionData.Len()) + l.stringTable.Size()
-	shStrTabSH.Size = l.sectionStringTable.Size()
 	headers = append(headers, shStrTabSH)
 
 	// Add symbol and string data to section data
 	// First symbol is always NULL
 	nullSym := Symbol64{}
 	var symBuf bytes.Buffer
-	nullSym.WriteTo(&symBuf)
+	_, _ = nullSym.WriteTo(&symBuf)
 
 	for _, sym := range l.symbols.GetAll() {
 		nameIdx := l.stringTable.Add(sym.Name)
@@ -603,16 +620,22 @@ func (l *Linker) createSectionHeaders() ([]*SectionHeader, []byte) {
 		}
 
 		elfSym := NewSymbol64(nameIdx, int(sym.Binding), int(sym.Type), shndx, sym.Value, sym.Size)
-		elfSym.WriteTo(&symBuf)
+		_, _ = elfSym.WriteTo(&symBuf)
 	}
 
-	// Write symbol data
+	// Write symbol data and record offset for .symtab
+	symTabSH.Offset = sectionDataOffset + uint64(sectionData.Len())
+	symTabSH.Size = uint64(symBuf.Len())
 	sectionData.Write(symBuf.Bytes())
 
-	// Add string table data
+	// Write string table data and record offset for .strtab
+	strTabSH.Offset = sectionDataOffset + uint64(sectionData.Len())
+	strTabSH.Size = l.stringTable.Size()
 	sectionData.Write(l.stringTable.Data())
 
-	// Add section header string table data
+	// Write section header string table data and record offset for .shstrtab
+	shStrTabSH.Offset = sectionDataOffset + uint64(sectionData.Len())
+	shStrTabSH.Size = l.sectionStringTable.Size()
 	sectionData.Write(l.sectionStringTable.Data())
 
 	return headers, sectionData.Bytes()

@@ -456,13 +456,22 @@ func NewELFHeaderRelocatable() *ELFHeader {
 }
 
 // WriteTo writes the ELF header to the given writer in binary format.
-func (h *ELFHeader) WriteTo(w io.Writer) error {
-	return binary.Write(w, binary.LittleEndian, h)
+// WriteTo writes the ELF header to the given writer in binary format.
+func (h *ELFHeader) WriteTo(w io.Writer) (int64, error) {
+	err := binary.Write(w, binary.LittleEndian, h)
+	if err != nil {
+		return 0, err
+	}
+	return int64(binary.Size(h)), nil
 }
 
 // ReadFrom reads the ELF header from the given reader in binary format.
-func (h *ELFHeader) ReadFrom(r io.Reader) error {
-	return binary.Read(r, binary.LittleEndian, h)
+func (h *ELFHeader) ReadFrom(r io.Reader) (int64, error) {
+	err := binary.Read(r, binary.LittleEndian, h)
+	if err != nil {
+		return 0, err
+	}
+	return int64(binary.Size(h)), nil
 }
 
 // Validate validates the ELF header.
@@ -498,13 +507,22 @@ func NewLoadProgramHeader(flags ProgramFlags) *ProgramHeader {
 }
 
 // WriteTo writes the program header to the given writer in binary format.
-func (ph *ProgramHeader) WriteTo(w io.Writer) error {
-	return binary.Write(w, binary.LittleEndian, ph)
+// WriteTo writes the program header to the given writer in binary format.
+func (ph *ProgramHeader) WriteTo(w io.Writer) (int64, error) {
+	err := binary.Write(w, binary.LittleEndian, ph)
+	if err != nil {
+		return 0, err
+	}
+	return int64(binary.Size(ph)), nil
 }
 
 // ReadFrom reads the program header from the given reader in binary format.
-func (ph *ProgramHeader) ReadFrom(r io.Reader) error {
-	return binary.Read(r, binary.LittleEndian, ph)
+func (ph *ProgramHeader) ReadFrom(r io.Reader) (int64, error) {
+	err := binary.Read(r, binary.LittleEndian, ph)
+	if err != nil {
+		return 0, err
+	}
+	return int64(binary.Size(ph)), nil
 }
 
 // NewSectionHeader creates a new section header.
@@ -562,53 +580,95 @@ func NewSectionHeaderNoBits(name uint32, flags SectionFlags) *SectionHeader {
 }
 
 // WriteTo writes the section header to the given writer in binary format.
-func (sh *SectionHeader) WriteTo(w io.Writer) error {
-	return binary.Write(w, binary.LittleEndian, sh)
+// WriteTo writes the section header to the given writer in binary format.
+func (sh *SectionHeader) WriteTo(w io.Writer) (int64, error) {
+	err := binary.Write(w, binary.LittleEndian, sh)
+	if err != nil {
+		return 0, err
+	}
+	return int64(binary.Size(sh)), nil
 }
 
 // ReadFrom reads the section header from the given reader in binary format.
-func (sh *SectionHeader) ReadFrom(r io.Reader) error {
-	return binary.Read(r, binary.LittleEndian, sh)
+func (sh *SectionHeader) ReadFrom(r io.Reader) (int64, error) {
+	err := binary.Read(r, binary.LittleEndian, sh)
+	if err != nil {
+		return 0, err
+	}
+	return int64(binary.Size(sh)), nil
 }
 
 // WriteTo writes the symbol to the given writer in binary format.
-func (sym *Symbol64) WriteTo(w io.Writer) error {
-	return binary.Write(w, binary.LittleEndian, sym)
+// WriteTo writes the symbol to the given writer in binary format.
+func (sym *Symbol64) WriteTo(w io.Writer) (int64, error) {
+	err := binary.Write(w, binary.LittleEndian, sym)
+	if err != nil {
+		return 0, err
+	}
+	return int64(binary.Size(sym)), nil
 }
 
 // ReadFrom reads the symbol from the given reader in binary format.
-func (sym *Symbol64) ReadFrom(r io.Reader) error {
-	return binary.Read(r, binary.LittleEndian, sym)
+func (sym *Symbol64) ReadFrom(r io.Reader) (int64, error) {
+	err := binary.Read(r, binary.LittleEndian, sym)
+	if err != nil {
+		return 0, err
+	}
+	return int64(binary.Size(sym)), nil
 }
 
 // WriteTo writes the relocation entry to the given writer in binary format.
-func (rel *Rel64) WriteTo(w io.Writer) error {
-	return binary.Write(w, binary.LittleEndian, rel)
+func (rel *Rel64) WriteTo(w io.Writer) (int64, error) {
+	err := binary.Write(w, binary.LittleEndian, rel)
+	if err != nil {
+		return 0, err
+	}
+	return int64(binary.Size(rel)), nil
 }
 
 // ReadFrom reads the relocation entry from the given reader in binary format.
-func (rel *Rel64) ReadFrom(r io.Reader) error {
-	return binary.Read(r, binary.LittleEndian, rel)
+func (rel *Rel64) ReadFrom(r io.Reader) (int64, error) {
+	err := binary.Read(r, binary.LittleEndian, rel)
+	if err != nil {
+		return 0, err
+	}
+	return int64(binary.Size(rel)), nil
 }
 
 // WriteTo writes the relocation entry with addend to the given writer.
-func (rel *Rela64) WriteTo(w io.Writer) error {
-	return binary.Write(w, binary.LittleEndian, rel)
+func (rel *Rela64) WriteTo(w io.Writer) (int64, error) {
+	err := binary.Write(w, binary.LittleEndian, rel)
+	if err != nil {
+		return 0, err
+	}
+	return int64(binary.Size(rel)), nil
 }
 
 // ReadFrom reads the relocation entry with addend from the given reader.
-func (rel *Rela64) ReadFrom(r io.Reader) error {
-	return binary.Read(r, binary.LittleEndian, rel)
+func (rel *Rela64) ReadFrom(r io.Reader) (int64, error) {
+	err := binary.Read(r, binary.LittleEndian, rel)
+	if err != nil {
+		return 0, err
+	}
+	return int64(binary.Size(rel)), nil
 }
 
 // WriteTo writes the dynamic entry to the given writer in binary format.
-func (dyn *Dyn64) WriteTo(w io.Writer) error {
-	return binary.Write(w, binary.LittleEndian, dyn)
+func (dyn *Dyn64) WriteTo(w io.Writer) (int64, error) {
+	err := binary.Write(w, binary.LittleEndian, dyn)
+	if err != nil {
+		return 0, err
+	}
+	return int64(binary.Size(dyn)), nil
 }
 
 // ReadFrom reads the dynamic entry from the given reader in binary format.
-func (dyn *Dyn64) ReadFrom(r io.Reader) error {
-	return binary.Read(r, binary.LittleEndian, dyn)
+func (dyn *Dyn64) ReadFrom(r io.Reader) (int64, error) {
+	err := binary.Read(r, binary.LittleEndian, dyn)
+	if err != nil {
+		return 0, err
+	}
+	return int64(binary.Size(dyn)), nil
 }
 
 // ============================================================================

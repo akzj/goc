@@ -871,9 +871,12 @@ func (p *Parser) parseCast() Expr {
 		
 		if p.isTypeName() {
 			typ := p.parseTypeName()
+			typ = p.parseDeclarator(typ)
 			p.expect(lexer.RPAREN)
 			expr := p.parseCast()
-			
+			if expr == nil {
+				return nil
+			}
 			return &CastExpr{
 				Type: typ,
 				Expr: expr,
@@ -950,6 +953,7 @@ func (p *Parser) parseSizeof(startPos lexer.Position) Expr {
 		
 		if p.isTypeName() {
 			typ := p.parseTypeName()
+			typ = p.parseDeclarator(typ)
 			p.expect(lexer.RPAREN)
 			
 			return &SizeofExpr{
@@ -970,7 +974,9 @@ func (p *Parser) parseSizeof(startPos lexer.Position) Expr {
 	}
 	
 	expr := p.parseUnary()
-	
+	if expr == nil {
+		return nil
+	}
 	return &SizeofExpr{
 		Expr: expr,
 		pos:  startPos,

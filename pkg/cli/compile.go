@@ -247,7 +247,24 @@ func outputExecutable(assembly string, opts *CompileOptions, errorHandler *errha
 		baseName := strings.TrimSuffix(opts.InputFile, ".c")
 		outputPath = baseName + ".exe"
 	}
-	if err := link.LinkAssembly(assembly, outputPath); err != nil {
+
+	// Read crt0.S runtime startup code and prepend it to the assembly
+	crt0Path := "pkg/codegen/runtime/crt0.S"
+	crt0Code, err := os.ReadFile(crt0Path)
+	if err != nil {
+		return fmt.Errorf("reading crt0.S: %w", err)
+	}
+	
+	// Prepend crt0.S to the assembly
+	fullAssembly := string(crt0Code) + "\n" + assembly
+
+	// Debug: Save assembly to file for inspection
+	debugAsmPath := outputPath + ".s"
+	if err := os.WriteFile(debugAsmPath, []byte(fullAssembly), 0644); err != nil {
+		return fmt.Errorf("writing debug assembly: %w", err)
+	}
+
+	if err := link.LinkAssembly(fullAssembly, outputPath); err != nil {
 		return fmt.Errorf("linking: %w", err)
 	}
 	printVerbose(opts, "Executable written to: %s\n", outputPath)

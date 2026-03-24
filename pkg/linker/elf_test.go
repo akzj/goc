@@ -138,7 +138,7 @@ func TestELFHeaderWriteTo(t *testing.T) {
 	h := NewELFHeader()
 	
 	var buf bytes.Buffer
-	err := h.WriteTo(&buf)
+	_, err := h.WriteTo(&buf)
 	if err != nil {
 		t.Fatalf("WriteTo() error = %v", err)
 	}
@@ -155,12 +155,12 @@ func TestELFHeaderReadFrom(t *testing.T) {
 	h1.Shoff = 0x1000
 	
 	var buf bytes.Buffer
-	if err := h1.WriteTo(&buf); err != nil {
+	if _, err := h1.WriteTo(&buf); err != nil {
 		t.Fatalf("WriteTo() error = %v", err)
 	}
 	
 	h2 := &ELFHeader{}
-	if err := h2.ReadFrom(&buf); err != nil {
+	if _, err := h2.ReadFrom(&buf); err != nil {
 		t.Fatalf("ReadFrom() error = %v", err)
 	}
 	
@@ -212,7 +212,7 @@ func TestProgramHeaderWriteTo(t *testing.T) {
 	ph.Memsz = 0x200
 	
 	var buf bytes.Buffer
-	err := ph.WriteTo(&buf)
+	_, err := ph.WriteTo(&buf)
 	if err != nil {
 		t.Fatalf("WriteTo() error = %v", err)
 	}
@@ -231,12 +231,12 @@ func TestProgramHeaderReadFrom(t *testing.T) {
 	ph1.Memsz = 0x300
 	
 	var buf bytes.Buffer
-	if err := ph1.WriteTo(&buf); err != nil {
+	if _, err := ph1.WriteTo(&buf); err != nil {
 		t.Fatalf("WriteTo() error = %v", err)
 	}
 	
 	ph2 := &ProgramHeader{}
-	if err := ph2.ReadFrom(&buf); err != nil {
+	if _, err := ph2.ReadFrom(&buf); err != nil {
 		t.Fatalf("ReadFrom() error = %v", err)
 	}
 	
@@ -345,7 +345,7 @@ func TestSectionHeaderWriteTo(t *testing.T) {
 	sh.Size = 0x200
 	
 	var buf bytes.Buffer
-	err := sh.WriteTo(&buf)
+	_, err := sh.WriteTo(&buf)
 	if err != nil {
 		t.Fatalf("WriteTo() error = %v", err)
 	}
@@ -364,12 +364,12 @@ func TestSectionHeaderReadFrom(t *testing.T) {
 	sh1.Info = 0
 	
 	var buf bytes.Buffer
-	if err := sh1.WriteTo(&buf); err != nil {
+	if _, err := sh1.WriteTo(&buf); err != nil {
 		t.Fatalf("WriteTo() error = %v", err)
 	}
 	
 	sh2 := &SectionHeader{}
-	if err := sh2.ReadFrom(&buf); err != nil {
+	if _, err := sh2.ReadFrom(&buf); err != nil {
 		t.Fatalf("ReadFrom() error = %v", err)
 	}
 	
@@ -471,7 +471,7 @@ func TestSymbol64WriteTo(t *testing.T) {
 	sym := NewSymbol64(1, STB_GLOBAL, STT_FUNC, 1, 0x401000, 32)
 	
 	var buf bytes.Buffer
-	err := sym.WriteTo(&buf)
+	_, err := sym.WriteTo(&buf)
 	if err != nil {
 		t.Fatalf("WriteTo() error = %v", err)
 	}
@@ -485,12 +485,12 @@ func TestSymbol64ReadFrom(t *testing.T) {
 	sym1 := NewSymbol64(1, STB_GLOBAL, STT_FUNC, 1, 0x401000, 32)
 	
 	var buf bytes.Buffer
-	if err := sym1.WriteTo(&buf); err != nil {
+	if _, err := sym1.WriteTo(&buf); err != nil {
 		t.Fatalf("WriteTo() error = %v", err)
 	}
 	
 	sym2 := &Symbol64{}
-	if err := sym2.ReadFrom(&buf); err != nil {
+	if _, err := sym2.ReadFrom(&buf); err != nil {
 		t.Fatalf("ReadFrom() error = %v", err)
 	}
 	
@@ -589,7 +589,7 @@ func TestRela64WriteTo(t *testing.T) {
 	rel := NewRela64(0x100, 1, R_X86_64_64, 42)
 	
 	var buf bytes.Buffer
-	err := rel.WriteTo(&buf)
+	_, err := rel.WriteTo(&buf)
 	if err != nil {
 		t.Fatalf("WriteTo() error = %v", err)
 	}
@@ -603,12 +603,12 @@ func TestRela64ReadFrom(t *testing.T) {
 	rel1 := NewRela64(0x100, 1, R_X86_64_64, 42)
 	
 	var buf bytes.Buffer
-	if err := rel1.WriteTo(&buf); err != nil {
+	if _, err := rel1.WriteTo(&buf); err != nil {
 		t.Fatalf("WriteTo() error = %v", err)
 	}
 	
 	rel2 := &Rela64{}
-	if err := rel2.ReadFrom(&buf); err != nil {
+	if _, err := rel2.ReadFrom(&buf); err != nil {
 		t.Fatalf("ReadFrom() error = %v", err)
 	}
 	
@@ -630,7 +630,7 @@ func TestRel64WriteTo(t *testing.T) {
 	}
 	
 	var buf bytes.Buffer
-	err := rel.WriteTo(&buf)
+	_, err := rel.WriteTo(&buf)
 	if err != nil {
 		t.Fatalf("WriteTo() error = %v", err)
 	}
@@ -659,7 +659,7 @@ func TestDyn64WriteTo(t *testing.T) {
 	dyn := NewDyn64(DT_NEEDED, 1)
 	
 	var buf bytes.Buffer
-	err := dyn.WriteTo(&buf)
+	_, err := dyn.WriteTo(&buf)
 	if err != nil {
 		t.Fatalf("WriteTo() error = %v", err)
 	}
@@ -673,12 +673,12 @@ func TestDyn64ReadFrom(t *testing.T) {
 	dyn1 := NewDyn64(DT_NEEDED, 1)
 	
 	var buf bytes.Buffer
-	if err := dyn1.WriteTo(&buf); err != nil {
+	if _, err := dyn1.WriteTo(&buf); err != nil {
 		t.Fatalf("WriteTo() error = %v", err)
 	}
 	
 	dyn2 := &Dyn64{}
-	if err := dyn2.ReadFrom(&buf); err != nil {
+	if _, err := dyn2.ReadFrom(&buf); err != nil {
 		t.Fatalf("ReadFrom() error = %v", err)
 	}
 	
@@ -788,29 +788,29 @@ func TestELFStructureSerialization(t *testing.T) {
 	var buf bytes.Buffer
 	
 	// Write ELF header
-	if err := h.WriteTo(&buf); err != nil {
+	if _, err := h.WriteTo(&buf); err != nil {
 		t.Fatalf("Write ELF header: %v", err)
 	}
 	
 	// Write program headers
-	if err := ph1.WriteTo(&buf); err != nil {
+	if _, err := ph1.WriteTo(&buf); err != nil {
 		t.Fatalf("Write program header 1: %v", err)
 	}
-	if err := ph2.WriteTo(&buf); err != nil {
+	if _, err := ph2.WriteTo(&buf); err != nil {
 		t.Fatalf("Write program header 2: %v", err)
 	}
 	
 	// Write section headers
-	if err := sh1.WriteTo(&buf); err != nil {
+	if _, err := sh1.WriteTo(&buf); err != nil {
 		t.Fatalf("Write section header 1: %v", err)
 	}
-	if err := sh2.WriteTo(&buf); err != nil {
+	if _, err := sh2.WriteTo(&buf); err != nil {
 		t.Fatalf("Write section header 2: %v", err)
 	}
-	if err := sh3.WriteTo(&buf); err != nil {
+	if _, err := sh3.WriteTo(&buf); err != nil {
 		t.Fatalf("Write section header 3: %v", err)
 	}
-	if err := sh4.WriteTo(&buf); err != nil {
+	if _, err := sh4.WriteTo(&buf); err != nil {
 		t.Fatalf("Write section header 4: %v", err)
 	}
 	

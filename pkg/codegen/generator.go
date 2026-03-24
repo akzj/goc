@@ -344,26 +344,42 @@ func (cg *CodeGenerator) emitArithmetic(instr ir.Instruction, op string) {
 	src := operands[0]
 	src2 := operands[1]
 
-	// Allocate registers
+	// Allocate register for destination
 	destReg := cg.regAlloc.Allocate(dest)
-	srcReg := cg.regAlloc.Allocate(src)
-	src2Reg := cg.regAlloc.Allocate(src2)
 
-	// Move first operand to dest
-	cg.emitMove(destReg, srcReg, dest.Type)
+	// Handle first operand: if constant, load it directly; otherwise move from source
+	if src.Kind == ir.OperandConst {
+		cg.output.WriteString("\tmovq\t$")
+		cg.output.WriteString(fmt.Sprintf("%v", src.Value))
+		cg.output.WriteString(", ")
+		cg.emitOperand(destReg, dest.Type)
+		cg.output.WriteString("\n")
+	} else {
+		srcReg := cg.regAlloc.Allocate(src)
+		cg.emitMove(destReg, srcReg, dest.Type)
+		cg.regAlloc.FreeOperand(src)
+	}
 
-	// Perform operation with second operand
-	cg.output.WriteString("\t")
-	cg.output.WriteString(op)
-	cg.output.WriteString("\t")
-	cg.emitOperand(src2Reg, src2.Type)
-	cg.output.WriteString(", ")
-	cg.emitOperand(destReg, dest.Type)
-	cg.output.WriteString("\n")
-
-	// Free source registers
-	cg.regAlloc.FreeOperand(src)
-	cg.regAlloc.FreeOperand(src2)
+	// Handle second operand: if constant, use as immediate; otherwise use register
+	if src2.Kind == ir.OperandConst {
+		cg.output.WriteString("\t")
+		cg.output.WriteString(op)
+		cg.output.WriteString("\t$")
+		cg.output.WriteString(fmt.Sprintf("%v", src2.Value))
+		cg.output.WriteString(", ")
+		cg.emitOperand(destReg, dest.Type)
+		cg.output.WriteString("\n")
+	} else {
+		src2Reg := cg.regAlloc.Allocate(src2)
+		cg.output.WriteString("\t")
+		cg.output.WriteString(op)
+		cg.output.WriteString("\t")
+		cg.emitOperand(src2Reg, src2.Type)
+		cg.output.WriteString(", ")
+		cg.emitOperand(destReg, dest.Type)
+		cg.output.WriteString("\n")
+		cg.regAlloc.FreeOperand(src2)
+	}
 }
 
 // emitDiv emits division instruction.
@@ -455,12 +471,21 @@ func (cg *CodeGenerator) emitUnary(instr ir.Instruction, op string) {
 
 	src := operands[0]
 
-	// Allocate registers
+	// Allocate register for destination
 	destReg := cg.regAlloc.Allocate(dest)
-	srcReg := cg.regAlloc.Allocate(src)
 
-	// Move source to dest
-	cg.emitMove(destReg, srcReg, dest.Type)
+	// Handle source operand: if constant, load it directly; otherwise move from source
+	if src.Kind == ir.OperandConst {
+		cg.output.WriteString("\tmovq\t$")
+		cg.output.WriteString(fmt.Sprintf("%v", src.Value))
+		cg.output.WriteString(", ")
+		cg.emitOperand(destReg, dest.Type)
+		cg.output.WriteString("\n")
+	} else {
+		srcReg := cg.regAlloc.Allocate(src)
+		cg.emitMove(destReg, srcReg, dest.Type)
+		cg.regAlloc.FreeOperand(src)
+	}
 
 	// Perform operation
 	cg.output.WriteString("\t")
@@ -468,8 +493,6 @@ func (cg *CodeGenerator) emitUnary(instr ir.Instruction, op string) {
 	cg.output.WriteString("\t")
 	cg.emitOperand(destReg, dest.Type)
 	cg.output.WriteString("\n")
-
-	cg.regAlloc.FreeOperand(src)
 }
 
 // emitCompare emits comparison instructions.
@@ -484,17 +507,44 @@ func (cg *CodeGenerator) emitCompare(instr ir.Instruction, setOp string) {
 	left := operands[0]
 	right := operands[1]
 
-	// Allocate registers
+	// Allocate register for destination
 	destReg := cg.regAlloc.Allocate(dest)
-	leftReg := cg.regAlloc.Allocate(left)
-	rightReg := cg.regAlloc.Allocate(right)
 
-	// Compare operands
-	cg.output.WriteString("\tcmpq\t")
-	cg.emitOperand(rightReg, right.Type)
-	cg.output.WriteString(", ")
-	cg.emitOperand(leftReg, left.Type)
-	cg.output.WriteString("\n")
+	// Handle left operand: if constant, load it into a register
+	var leftReg Reg
+	if left.Kind == ir.OperandConst {
+		leftReg = cg.regAlloc.Allocate(&ir.Operand{Kind: ir.OperandTemp, Value: &ir.Temp{ID: -1, Type: left.Type}})
+		cg.output.WriteString("\tmovq\t$")
+		cg.output.WriteString(fmt.Sprintf("%v", left.Value))
+		cg.output.WriteString(", ")
+		cg.emitOperand(leftReg, left.Type)
+		cg.output.WriteString("\n")
+	} else {
+		leftReg = cg.regAlloc.Allocate(left)
+	}
+
+	// Handle right operand: if constant, use as immediate; otherwise use register
+	if right.Kind == ir.OperandConst {
+		// Compare with immediate
+		cg.output.WriteString("\tcmpq\t$")
+		cg.output.WriteString(fmt.Sprintf("%v", right.Value))
+		cg.output.WriteString(", ")
+		cg.emitOperand(leftReg, left.Type)
+		cg.output.WriteString("\n")
+	} else {
+		rightReg := cg.regAlloc.Allocate(right)
+		cg.output.WriteString("\tcmpq\t")
+		cg.emitOperand(rightReg, right.Type)
+		cg.output.WriteString(", ")
+		cg.emitOperand(leftReg, left.Type)
+		cg.output.WriteString("\n")
+		cg.regAlloc.FreeOperand(right)
+	}
+
+	// Free left register if it was allocated for a non-constant
+	if left.Kind != ir.OperandConst {
+		cg.regAlloc.FreeOperand(left)
+	}
 
 	// Clear dest register
 	cg.output.WriteString("\txorl\t")
@@ -509,9 +559,6 @@ func (cg *CodeGenerator) emitCompare(instr ir.Instruction, setOp string) {
 	cg.output.WriteString("\t")
 	cg.emitOperand(destReg, dest.Type)
 	cg.output.WriteString("\n")
-
-	cg.regAlloc.FreeOperand(left)
-	cg.regAlloc.FreeOperand(right)
 }
 
 // emitLogical emits logical instructions (and, or).
@@ -526,28 +573,48 @@ func (cg *CodeGenerator) emitLogical(instr ir.Instruction) {
 	left := operands[0]
 	right := operands[1]
 
-	// Allocate registers
+	// Allocate register for destination
 	destReg := cg.regAlloc.Allocate(dest)
-	leftReg := cg.regAlloc.Allocate(left)
-	rightReg := cg.regAlloc.Allocate(right)
 
-	// Move first operand to dest
-	cg.emitMove(destReg, leftReg, dest.Type)
-
-	// Perform logical operation
-	switch instr.Opcode() {
-	case ir.OpAnd:
-		cg.output.WriteString("\tandq\t")
-	case ir.OpOr:
-		cg.output.WriteString("\torq\t")
+	// Handle left operand: if constant, load it directly; otherwise move from source
+	if left.Kind == ir.OperandConst {
+		cg.output.WriteString("\tmovq\t$")
+		cg.output.WriteString(fmt.Sprintf("%v", left.Value))
+		cg.output.WriteString(", ")
+		cg.emitOperand(destReg, dest.Type)
+		cg.output.WriteString("\n")
+	} else {
+		leftReg := cg.regAlloc.Allocate(left)
+		cg.emitMove(destReg, leftReg, dest.Type)
+		cg.regAlloc.FreeOperand(left)
 	}
-	cg.emitOperand(rightReg, right.Type)
-	cg.output.WriteString(", ")
-	cg.emitOperand(destReg, dest.Type)
-	cg.output.WriteString("\n")
 
-	cg.regAlloc.FreeOperand(left)
-	cg.regAlloc.FreeOperand(right)
+	// Handle right operand: if constant, use as immediate; otherwise use register
+	if right.Kind == ir.OperandConst {
+		switch instr.Opcode() {
+		case ir.OpAnd:
+			cg.output.WriteString("\tandq\t$")
+		case ir.OpOr:
+			cg.output.WriteString("\torq\t$")
+		}
+		cg.output.WriteString(fmt.Sprintf("%v", right.Value))
+		cg.output.WriteString(", ")
+		cg.emitOperand(destReg, dest.Type)
+		cg.output.WriteString("\n")
+	} else {
+		rightReg := cg.regAlloc.Allocate(right)
+		switch instr.Opcode() {
+		case ir.OpAnd:
+			cg.output.WriteString("\tandq\t")
+		case ir.OpOr:
+			cg.output.WriteString("\torq\t")
+		}
+		cg.emitOperand(rightReg, right.Type)
+		cg.output.WriteString(", ")
+		cg.emitOperand(destReg, dest.Type)
+		cg.output.WriteString("\n")
+		cg.regAlloc.FreeOperand(right)
+	}
 }
 
 // emitShift emits shift instructions (shl, shr).
@@ -562,18 +629,34 @@ func (cg *CodeGenerator) emitShift(instr ir.Instruction, op string) {
 	value := operands[0]
 	shift := operands[1]
 
-	// Allocate registers
+	// Allocate register for destination
 	destReg := cg.regAlloc.Allocate(dest)
-	valueReg := cg.regAlloc.Allocate(value)
-	shiftReg := cg.regAlloc.Allocate(shift)
 
-	// Move value to dest
-	cg.emitMove(destReg, valueReg, dest.Type)
+	// Handle value operand: if constant, load it directly; otherwise move from source
+	if value.Kind == ir.OperandConst {
+		cg.output.WriteString("\tmovq\t$")
+		cg.output.WriteString(fmt.Sprintf("%v", value.Value))
+		cg.output.WriteString(", ")
+		cg.emitOperand(destReg, dest.Type)
+		cg.output.WriteString("\n")
+	} else {
+		valueReg := cg.regAlloc.Allocate(value)
+		cg.emitMove(destReg, valueReg, dest.Type)
+		cg.regAlloc.FreeOperand(value)
+	}
 
-	// Move shift amount to RCX (required by x86 shift instructions)
-	cg.output.WriteString("\tmovq\t")
-	cg.emitOperand(shiftReg, shift.Type)
-	cg.output.WriteString(", %rcx\n")
+	// Handle shift amount: if constant, load it directly into RCX; otherwise move from source
+	if shift.Kind == ir.OperandConst {
+		cg.output.WriteString("\tmovq\t$")
+		cg.output.WriteString(fmt.Sprintf("%v", shift.Value))
+		cg.output.WriteString(", %rcx\n")
+	} else {
+		shiftReg := cg.regAlloc.Allocate(shift)
+		cg.output.WriteString("\tmovq\t")
+		cg.emitOperand(shiftReg, shift.Type)
+		cg.output.WriteString(", %rcx\n")
+		cg.regAlloc.FreeOperand(shift)
+	}
 
 	// Perform shift
 	cg.output.WriteString("\t")
@@ -581,9 +664,6 @@ func (cg *CodeGenerator) emitShift(instr ir.Instruction, op string) {
 	cg.output.WriteString("\t%cl, ")
 	cg.emitOperand(destReg, dest.Type)
 	cg.output.WriteString("\n")
-
-	cg.regAlloc.FreeOperand(value)
-	cg.regAlloc.FreeOperand(shift)
 }
 
 // emitLoad emits load instruction.
@@ -810,11 +890,19 @@ func (cg *CodeGenerator) emitRet(instr ir.Instruction) {
 	// Move return value to RAX if present
 	if len(operands) >= 1 && operands[0] != nil {
 		retval := operands[0]
-		retvalReg := cg.regAlloc.Allocate(retval)
-		cg.output.WriteString("\tmovq\t")
-		cg.emitOperand(retvalReg, retval.Type)
-		cg.output.WriteString(", %rax\n")
-		cg.regAlloc.FreeOperand(retval)
+		
+		// Handle constant operands directly without register allocation
+		if retval.Kind == ir.OperandConst {
+			cg.output.WriteString("\tmovq\t$")
+			cg.output.WriteString(fmt.Sprintf("%v", retval.Value))
+			cg.output.WriteString(", %rax\n")
+		} else {
+			retvalReg := cg.regAlloc.Allocate(retval)
+			cg.output.WriteString("\tmovq\t")
+			cg.emitOperand(retvalReg, retval.Type)
+			cg.output.WriteString(", %rax\n")
+			cg.regAlloc.FreeOperand(retval)
+		}
 	}
 
 	// Jump to function-specific epilogue
