@@ -207,7 +207,8 @@ func (h *ErrorHandler) reportHumanReadable(w io.Writer) {
 
 		// Add source context if available
 		if err.Position.IsValid() && err.Position.File != "" {
-			if ctx := h.GetContext(err.Position); ctx != nil && ctx.LineContent != "" {
+			// Use enhanced context with surrounding lines
+			if ctx := h.GetContextWithSurroundings(err.Position, 2, 2); ctx != nil && ctx.LineContent != "" {
 				fmt.Fprintln(w, ctx.String())
 			}
 		}
@@ -325,6 +326,62 @@ func (h *ErrorHandler) GetContextWithRange(pos Position, startCol, endCol int) *
 		LineContent: lineContent,
 		StartCol:    startCol,
 		EndCol:      endCol,
+	}
+}
+
+// GetContextWithSurroundings returns source context with surrounding lines.
+// Shows contextLinesBefore lines before and contextLinesAfter lines after the error.
+// Default: 2 lines before and 2 lines after if contextLinesBefore/After <= 0.
+func (h *ErrorHandler) GetContextWithSurroundings(pos Position, contextLinesBefore, contextLinesAfter int) *SourceContext {
+	if !pos.IsValid() || pos.File == "" {
+		return nil
+	}
+
+	source, ok := h.source[pos.File]
+	if !ok {
+		return nil
+	}
+
+	lines := strings.Split(source, "\n")
+	// Remove trailing empty line if source ends with newline
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if pos.Line < 1 || pos.Line > len(lines) {
+		return nil
+	}
+
+	// Set defaults if not specified
+	if contextLinesBefore <= 0 {
+		contextLinesBefore = 2
+	}
+	if contextLinesAfter <= 0 {
+		contextLinesAfter = 2
+	}
+
+	lineContent := lines[pos.Line-1]
+
+	// Calculate surrounding lines
+	beforeStart := pos.Line - 1 - contextLinesBefore
+	if beforeStart < 0 {
+		beforeStart = 0
+	}
+	beforeLines := lines[beforeStart : pos.Line-1]
+
+	afterEnd := pos.Line + contextLinesAfter
+	if afterEnd > len(lines) {
+		afterEnd = len(lines)
+	}
+	afterLines := lines[pos.Line:afterEnd]
+
+	return &SourceContext{
+		Position:    pos,
+		LineContent: lineContent,
+		StartCol:    pos.Column,
+		EndCol:      pos.Column,
+		BeforeLines: beforeLines,
+		AfterLines:  afterLines,
+		UseColors:   true,
 	}
 }
 

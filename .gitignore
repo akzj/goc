@@ -8,6 +8,7 @@ bin/
 /goc
 /goc_test
 *.orig
+debug_parser_main.go
 
 # Test binary, built with `go test -c`
 *.test

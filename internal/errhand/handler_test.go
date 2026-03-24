@@ -538,11 +538,15 @@ func TestErrorHandler_ReportWithSourceContext(t *testing.T) {
 
 	output := buf.String()
 
-	if !strings.Contains(output, "1 | int x = 5;") {
+	// With ANSI codes, the format is: \033[1m1\033[0m | int x = 5;\033[0m
+	if !strings.Contains(output, "| int x = 5;") {
 		t.Errorf("Report output = %q, should contain source line", output)
 	}
 	if !strings.Contains(output, "^") {
 		t.Errorf("Report output = %q, should contain caret", output)
+	}
+	if !strings.Contains(output, "\033[") {
+		t.Errorf("Report output = %q, should contain ANSI color codes", output)
 	}
 }
 
@@ -665,5 +669,192 @@ func TestErrorHandler_ConfigStruct(t *testing.T) {
 	}
 	if config.OutputFormat != MachineReadable {
 		t.Errorf("Config.OutputFormat = %v, want MachineReadable", config.OutputFormat)
+	}
+}
+
+// TestErrorHandler_GetContextWithSurroundings tests context with surrounding lines.
+func TestErrorHandler_GetContextWithSurroundings(t *testing.T) {
+	h := NewErrorHandler()
+
+	source := "line1\nline2\nline3\nline4\nline5\n"
+	h.CacheSource("test.c", source)
+
+	ctx := h.GetContextWithSurroundings(Position{File: "test.c", Line: 3, Column: 5}, 2, 2)
+
+	if ctx == nil {
+		t.Fatal("GetContextWithSurroundings() returned nil")
+	}
+	if ctx.LineContent != "line3" {
+		t.Errorf("LineContent = %q, want %q", ctx.LineContent, "line3")
+	}
+	if len(ctx.BeforeLines) != 2 {
+		t.Errorf("len(BeforeLines) = %d, want 2", len(ctx.BeforeLines))
+	}
+	if len(ctx.AfterLines) != 2 {
+		t.Errorf("len(AfterLines) = %d, want 2", len(ctx.AfterLines))
+	}
+	if ctx.BeforeLines[0] != "line1" {
+		t.Errorf("BeforeLines[0] = %q, want %q", ctx.BeforeLines[0], "line1")
+	}
+	if ctx.BeforeLines[1] != "line2" {
+		t.Errorf("BeforeLines[1] = %q, want %q", ctx.BeforeLines[1], "line2")
+	}
+	if ctx.AfterLines[0] != "line4" {
+		t.Errorf("AfterLines[0] = %q, want %q", ctx.AfterLines[0], "line4")
+	}
+	if ctx.AfterLines[1] != "line5" {
+		t.Errorf("AfterLines[1] = %q, want %q", ctx.AfterLines[1], "line5")
+	}
+	if !ctx.UseColors {
+		t.Error("UseColors should be true by default")
+	}
+}
+
+// TestErrorHandler_GetContextWithSurroundings_Defaults tests default context lines.
+func TestErrorHandler_GetContextWithSurroundings_Defaults(t *testing.T) {
+	h := NewErrorHandler()
+
+	source := "line1\nline2\nline3\nline4\nline5\n"
+	h.CacheSource("test.c", source)
+
+	// Pass 0 for defaults
+	ctx := h.GetContextWithSurroundings(Position{File: "test.c", Line: 3, Column: 5}, 0, 0)
+
+	if ctx == nil {
+		t.Fatal("GetContextWithSurroundings() returned nil")
+	}
+	if len(ctx.BeforeLines) != 2 {
+		t.Errorf("len(BeforeLines) = %d, want 2 (default)", len(ctx.BeforeLines))
+	}
+	if len(ctx.AfterLines) != 2 {
+		t.Errorf("len(AfterLines) = %d, want 2 (default)", len(ctx.AfterLines))
+	}
+}
+
+// TestErrorHandler_GetContextWithSurroundings_BeginningOfFile tests at file start.
+func TestErrorHandler_GetContextWithSurroundings_BeginningOfFile(t *testing.T) {
+	h := NewErrorHandler()
+
+	source := "line1\nline2\nline3\nline4\nline5\n"
+	h.CacheSource("test.c", source)
+
+	// Error on line 1 - should have no before lines
+	ctx := h.GetContextWithSurroundings(Position{File: "test.c", Line: 1, Column: 1}, 2, 2)
+
+	if ctx == nil {
+		t.Fatal("GetContextWithSurroundings() returned nil")
+	}
+	if len(ctx.BeforeLines) != 0 {
+		t.Errorf("len(BeforeLines) = %d, want 0 (at file start)", len(ctx.BeforeLines))
+	}
+	if len(ctx.AfterLines) != 2 {
+		t.Errorf("len(AfterLines) = %d, want 2", len(ctx.AfterLines))
+	}
+}
+
+// TestErrorHandler_GetContextWithSurroundings_EndOfFile tests at file end.
+func TestErrorHandler_GetContextWithSurroundings_EndOfFile(t *testing.T) {
+	h := NewErrorHandler()
+
+	source := "line1\nline2\nline3\nline4\nline5\n"
+	h.CacheSource("test.c", source)
+
+	// Error on last line - should have no after lines
+	ctx := h.GetContextWithSurroundings(Position{File: "test.c", Line: 5, Column: 1}, 2, 2)
+
+	if ctx == nil {
+		t.Fatal("GetContextWithSurroundings() returned nil")
+	}
+	if len(ctx.BeforeLines) != 2 {
+		t.Errorf("len(BeforeLines) = %d, want 2", len(ctx.BeforeLines))
+	}
+	if len(ctx.AfterLines) != 0 {
+		t.Errorf("len(AfterLines) = %d, want 0 (at file end)", len(ctx.AfterLines))
+	}
+}
+
+// TestErrorHandler_GetContextWithSurroundings_InvalidPosition tests invalid positions.
+func TestErrorHandler_GetContextWithSurroundings_InvalidPosition(t *testing.T) {
+	h := NewErrorHandler()
+
+	source := "line1\nline2\nline3\n"
+	h.CacheSource("test.c", source)
+
+	// Test with invalid line
+	ctx := h.GetContextWithSurroundings(Position{File: "test.c", Line: 0, Column: 1}, 2, 2)
+	if ctx != nil {
+		t.Error("GetContextWithSurroundings() should return nil for line 0")
+	}
+
+	// Test with line beyond file
+	ctx = h.GetContextWithSurroundings(Position{File: "test.c", Line: 100, Column: 1}, 2, 2)
+	if ctx != nil {
+		t.Error("GetContextWithSurroundings() should return nil for line beyond file")
+	}
+
+	// Test with no file
+	ctx = h.GetContextWithSurroundings(Position{File: "", Line: 1, Column: 1}, 2, 2)
+	if ctx != nil {
+		t.Error("GetContextWithSurroundings() should return nil for empty file")
+	}
+
+	// Test with uncached file
+	ctx = h.GetContextWithSurroundings(Position{File: "unknown.c", Line: 1, Column: 1}, 2, 2)
+	if ctx != nil {
+		t.Error("GetContextWithSurroundings() should return nil for uncached file")
+	}
+}
+
+// TestErrorHandler_GetContextWithSurroundings_CustomLines tests custom context line counts.
+func TestErrorHandler_GetContextWithSurroundings_CustomLines(t *testing.T) {
+	h := NewErrorHandler()
+
+	source := "line1\nline2\nline3\nline4\nline5\nline6\nline7\n"
+	h.CacheSource("test.c", source)
+
+	// Request 3 lines before and 1 line after
+	ctx := h.GetContextWithSurroundings(Position{File: "test.c", Line: 4, Column: 1}, 3, 1)
+
+	if ctx == nil {
+		t.Fatal("GetContextWithSurroundings() returned nil")
+	}
+	if len(ctx.BeforeLines) != 3 {
+		t.Errorf("len(BeforeLines) = %d, want 3", len(ctx.BeforeLines))
+	}
+	if len(ctx.AfterLines) != 1 {
+		t.Errorf("len(AfterLines) = %d, want 1", len(ctx.AfterLines))
+	}
+}
+
+// TestErrorHandler_ReportWithEnhancedContext tests that enhanced context is included in reports.
+func TestErrorHandler_ReportWithEnhancedContext(t *testing.T) {
+	h := NewErrorHandler()
+	source := "#include <stdio.h>\nint main() {\n    return 0;\n}\n"
+	h.CacheSource("test.c", source)
+
+	h.Error(ErrSyntaxError, "syntax error", Position{File: "test.c", Line: 3, Column: 5})
+
+	var buf bytes.Buffer
+	h.reportHumanReadable(&buf)
+
+	output := buf.String()
+
+	// Check that surrounding lines are included
+	if !strings.Contains(output, "#include <stdio.h>") {
+		t.Errorf("Report missing context before: %q", output)
+	}
+	if !strings.Contains(output, "int main() {") {
+		t.Errorf("Report missing context before: %q", output)
+	}
+	if !strings.Contains(output, "    return 0;") {
+		t.Errorf("Report missing error line: %q", output)
+	}
+	if !strings.Contains(output, "}") {
+		t.Errorf("Report missing context after: %q", output)
+	}
+
+	// Check for ANSI color codes
+	if !strings.Contains(output, "\033[") {
+		t.Errorf("Report missing ANSI color codes: %q", output)
 	}
 }
