@@ -33,10 +33,10 @@
 _start:
     # Extract argc from stack into %rdi (1st argument to main)
     movq (%rsp), %rdi
-    
-    # Extract argv from stack into %rsi (2nd argument to main)
-    # argv is the VALUE at offset 8 from rsp (pointer to argv[0])
-    movq 8(%rsp), %rsi
+
+    # argv (2nd argument) is char **: address of argv[0] on the stack (rsp+8),
+    # not the argv[0] pointer itself (that would be char * and crashes main).
+    leaq 8(%rsp), %rsi
     
     # Call main(argc, argv)
     # No stack adjustment needed: at _start %rsp % 16 == 8

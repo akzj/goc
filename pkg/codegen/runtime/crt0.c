@@ -2,8 +2,8 @@
  * crt0.c - C Runtime Startup for GOC
  * 
  * This file works with crt0.S to provide the _start entry point.
- * The assembly stub (crt0.S) extracts argc/argv from the stack
- * and calls main(argc, argv).
+ * The assembly stub (crt0.S) loads argc from the stack and passes
+ * argv as &argv[0] (i.e. (char **)(rsp+8)), then calls main(argc, argv).
  * 
  * Stack Layout (x86-64 System V ABI) at _start entry:
  *   %rsp → 8 bytes: argc (number of arguments)

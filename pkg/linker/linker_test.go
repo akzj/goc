@@ -388,8 +388,10 @@ func TestLinkerRelocatePCRelative(t *testing.T) {
 	}
 
 	value := binary.LittleEndian.Uint32(section.Data)
-	if value != 0x4C {
-		t.Errorf("Relocated value = 0x%x, want 0x4C", value)
+	// ELF PC32: S + A - P with P = sectionAddr + r_offset (start of 32-bit field).
+	// After assignAddresses: section 0x400000, symbol 0x400050, offset 0 → 0x50.
+	if value != 0x50 {
+		t.Errorf("Relocated value = 0x%x, want 0x50", value)
 	}
 }
 

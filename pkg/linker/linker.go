@@ -217,10 +217,13 @@ func (l *Linker) loadObjectFile(obj ObjectFile) error {
 	}
 
 	// Third pass: Update relocation section references to point to unified sections
+	// and adjust offsets by the merge offset
 	for _, rel := range obj.Relocations {
 		if rel.Section != nil {
 			if unifiedSection, ok := l.unifiedSections[rel.Section.Name]; ok {
 				rel.Section = unifiedSection
+				// Adjust the relocation offset by the merge offset
+				rel.Offset += sectionOffsets[rel.Section.Name]
 			}
 		}
 	}
@@ -456,9 +459,10 @@ func (l *Linker) applyRelocation(rel *Relocation) error {
 		l.writeUint64(rel.Section.Data, rel.Offset, value)
 
 	case R_X86_64_PC32, R_X86_64_PLT32:
-		// PC-relative 32-bit: (S + A) - P where P is the address of the first byte
-		// *after* the 32-bit field (RIP points past the displacement on x86-64).
-		p := sectionAddr + rel.Offset + 4
+		// ELF AMD64: word32 S + A - P, where P is the address of the relocated
+		// storage unit (r_offset = first byte of the 32-bit field). Gas uses
+		// R_X86_64_PLT32 with addend -4 for `call rel32` so S+A-P matches the ISA.
+		p := sectionAddr + rel.Offset
 		value := int64(symbolValue) + rel.Addend - int64(p)
 		l.writeInt32(rel.Section.Data, rel.Offset, int32(value))
 
@@ -472,6 +476,69 @@ func (l *Linker) applyRelocation(rel *Relocation) error {
 	}
 
 	return nil
+}
+
+// elfCongruentFileOffset returns the smallest offset o >= off such that
+// o%align == vaddr%align. Linux requires this for each PT_LOAD (see binfmt_elf).
+func elfCongruentFileOffset(off, vaddr, align uint64) uint64 {
+	if align == 0 {
+		return off
+	}
+	want := vaddr % align
+	cur := off % align
+	if want >= cur {
+		return off + (want - cur)
+	}
+	return off + (align - cur + want)
+}
+
+// fileBytesBeforeWritableData returns total PROGBITS size of sections listed
+// before the first writable non-executable section (matches l.sections order).
+func (l *Linker) fileBytesBeforeWritableData() uint64 {
+	var n uint64
+	for _, sec := range l.sections {
+		if sec.IsWritable() && !sec.IsExecutable() {
+			break
+		}
+		if sec.Type == SHT_NOBITS {
+			continue
+		}
+		n += sec.Size()
+	}
+	return n
+}
+
+// fileBytesWritableProgbits returns file-backed bytes for writable non-exec sections (excludes NOBITS).
+func (l *Linker) fileBytesWritableProgbits() uint64 {
+	var n uint64
+	started := false
+	for _, sec := range l.sections {
+		if sec.IsWritable() && !sec.IsExecutable() {
+			started = true
+		}
+		if !started {
+			continue
+		}
+		if sec.Type != SHT_NOBITS {
+			n += sec.Size()
+		}
+	}
+	return n
+}
+
+// segment0MemEnd is the end VMA of the first load region (everything before writable data).
+func (l *Linker) segment0MemEnd() uint64 {
+	var end uint64
+	for _, sec := range l.sections {
+		if sec.IsWritable() && !sec.IsExecutable() {
+			break
+		}
+		e := sec.Addr + sec.Size()
+		if e > end {
+			end = e
+		}
+	}
+	return end
 }
 
 // writeUint64 writes a uint64 in little-endian format at the given offset.
@@ -510,18 +577,19 @@ func (l *Linker) Emit() ([]byte, error) {
 	elfHeader.Shnum = 0 // Will be set later
 	elfHeader.Shstrndx = 0 // Will be set later
 
-	// Calculate offsets
-	headerSize := uint64(ELFHeaderSize())
-	phSize := uint64(len(programHeaders) * ProgramHeaderSize())
+	// File offset where the first PT_LOAD mapping starts (after ELF + PHDRs + pad).
+	var firstLoadOff uint64
+	for _, ph := range programHeaders {
+		if ph.Type == PT_LOAD {
+			firstLoadOff = ph.Offset
+			break
+		}
+	}
 
-	// Section data starts after headers
-	sectionDataOffset := headerSize + phSize
-
-	// Create section headers
-	sectionHeaders, sectionData := l.createSectionHeaders(sectionDataOffset)
+	sectionHeaders, sectionData := l.createSectionHeaders(firstLoadOff)
 
 	// Update ELF header
-	elfHeader.Shoff = sectionDataOffset + uint64(len(sectionData))
+	elfHeader.Shoff = firstLoadOff + uint64(len(sectionData))
 	elfHeader.Shnum = uint16(len(sectionHeaders))
 	// Shstrndx is the section header index of .shstrtab (last section)
 	elfHeader.Shstrndx = uint16(len(sectionHeaders) - 1)
@@ -544,7 +612,10 @@ func (l *Linker) Emit() ([]byte, error) {
 		}
 	}
 
-	// Write section data
+	// Pad so the first loaded segment matches PT_LOAD p_offset (Linux congruence check).
+	for uint64(buf.Len()) < firstLoadOff {
+		buf.WriteByte(0)
+	}
 	buf.Write(sectionData)
 
 	// Write section headers
@@ -603,29 +674,39 @@ func (l *Linker) createProgramHeaders() []*ProgramHeader {
 	}
 
 	// DATA segment - only create if there's actual data
+	var dataPH *ProgramHeader
 	if dataStart > 0 && dataSize > 0 {
-		dataPH := NewLoadProgramHeader(PF_R | PF_W)
+		dataPH = NewLoadProgramHeader(PF_R | PF_W)
 		dataPH.Vaddr = dataStart
 		dataPH.Paddr = dataStart
-		dataPH.Filesz = dataSize
+		dataPH.Filesz = l.fileBytesWritableProgbits()
 		dataPH.Memsz = dataSize
 		dataPH.Align = 0x1000
 		loadPHs = append(loadPHs, dataPH)
 	}
 
-	// Now calculate offsets based on actual number of headers
-	// Offset for first LOAD segment = ELF header + all program headers
-	// Note: We add 1 for the NULL program header that's always first
-	baseOffset := uint64(ELFHeaderSize() + (len(loadPHs)+1)*ProgramHeaderSize())
+	// File offsets must satisfy (p_offset % align) == (p_vaddr % align) for each LOAD.
+	rawPhEnd := uint64(ELFHeaderSize() + (len(loadPHs)+1)*ProgramHeaderSize())
+	pageAlign := uint64(0x1000)
 
-	for i, ph := range loadPHs {
-		if i == 0 {
-			ph.Offset = baseOffset
+	if textPH != nil {
+		textPH.Offset = elfCongruentFileOffset(rawPhEnd, textPH.Vaddr, pageAlign)
+		if dataPH != nil {
+			rawAfterText := textPH.Offset + l.fileBytesBeforeWritableData()
+			dataPH.Offset = elfCongruentFileOffset(rawAfterText, dataPH.Vaddr, pageAlign)
+			textPH.Filesz = dataPH.Offset - textPH.Offset
+			textPH.Memsz = dataStart - textStart
 		} else {
-			// Subsequent segments follow the previous one
-			prevPH := loadPHs[i-1]
-			ph.Offset = prevPH.Offset + prevPH.Filesz
+			textPH.Filesz = l.fileBytesBeforeWritableData()
+			if mem := l.segment0MemEnd(); mem > textStart {
+				textPH.Memsz = mem - textStart
+			} else {
+				textPH.Memsz = textPH.Filesz
+			}
 		}
+	}
+
+	for _, ph := range loadPHs {
 		phs = append(phs, ph)
 	}
 
@@ -643,7 +724,22 @@ func (l *Linker) createSectionHeaders(sectionDataOffset uint64) ([]*SectionHeade
 	headers = append(headers, NewSectionHeaderNull())
 
 	// Add section headers for each section
+	prevGroup := -1
 	for _, section := range l.sections {
+		g := 0
+		if section.IsWritable() && !section.IsExecutable() {
+			g = 1
+		}
+		if prevGroup == 0 && g == 1 {
+			curEnd := sectionDataOffset + uint64(sectionData.Len())
+			tgt := elfCongruentFileOffset(curEnd, section.Addr, 0x1000)
+			for curEnd < tgt {
+				sectionData.WriteByte(0)
+				curEnd++
+			}
+		}
+		prevGroup = g
+
 		nameIdx := l.sectionStringTable.Add(section.Name)
 
 		var sh *SectionHeader
