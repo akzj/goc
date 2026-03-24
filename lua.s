@@ -11,13 +11,6 @@
 #          8 bytes: argv[argc] (NULL terminator)
 #          8 bytes: envp[0] (environment pointers)
 #
-# Stack Alignment (System V AMD64 ABI):
-#   At _start entry from kernel: %rsp % 16 == 8
-#   (because the ABI assumes a fake return address was pushed)
-#   Before calling main(): %rsp % 16 must be 8
-#   (so after call pushes 8 bytes, inside main: %rsp % 16 == 0)
-#   Since we start with %rsp % 16 == 8, no adjustment needed!
-#
 # Calling Convention (System V AMD64 ABI):
 #   1st argument: %rdi
 #   2nd argument: %rsi
@@ -39,8 +32,6 @@ _start:
     movq 8(%rsp), %rsi
     
     # Call main(argc, argv)
-    # No stack adjustment needed: at _start %rsp % 16 == 8
-    # After call pushes 8 bytes, inside main: %rsp % 16 == 0 ✓
     call main
     
     # main() returns with exit code in %eax
@@ -53,3 +44,5 @@ _start:
 1:  jmp 1b
     
     .size _start, .-_start
+	.file	"source.c"
+	.text

@@ -27,6 +27,9 @@ type Linker struct {
 	sections []*Section
 	// objectFiles is the list of loaded object files.
 	objectFiles []*ObjectFile
+	// unifiedSections maps section names to unified section objects.
+	// This ensures all references to .text point to the same section object.
+	unifiedSections map[string]*Section
 	// entry is the entry point symbol name.
 	entry string
 	// baseAddr is the base address for the executable.
@@ -86,6 +89,7 @@ func NewLinker(errorHandler *errhand.ErrorHandler) *Linker {
 		symbols:            NewSymbolTable(),
 		sections:           make([]*Section, 0),
 		objectFiles:        make([]*ObjectFile, 0),
+		unifiedSections:    make(map[string]*Section),
 		entry:              "_start",
 		baseAddr:           0x400000,
 		nextAddr:           0x400000,
@@ -112,7 +116,6 @@ func (st *StringTable) Add(s string) uint32 {
 		return idx
 	}
 	idx := uint32(len(st.data))
-	fmt.Printf("DEBUG StringTable.Add: %q at idx=%d\n", s, idx)
 	st.data = append(st.data, []byte(s)...)
 	st.data = append(st.data, 0) // Null terminator
 	st.strings[s] = idx
@@ -166,17 +169,35 @@ func (l *Linker) Link(objects []ObjectFile, libs []string) ([]byte, error) {
 func (l *Linker) loadObjectFile(obj ObjectFile) error {
 	l.objectFiles = append(l.objectFiles, &obj)
 
-	// Add symbols to global symbol table
+	// First pass: Create or merge unified sections for all sections in this object
+	// Track the offset where each section's data was appended
+	sectionOffsets := make(map[string]uint64)
+	for sectionName, objSection := range obj.Sections {
+		// Check if unified section already exists
+		if _, ok := l.unifiedSections[sectionName]; ok {
+			// Merge this section's data into the unified section
+			offset := l.mergeSectionData(sectionName, objSection)
+			sectionOffsets[sectionName] = offset
+		} else {
+			// Create new unified section
+			l.getObjectSection(obj.Name, sectionName, objSection)
+			sectionOffsets[sectionName] = 0
+		}
+	}
+
+	// Second pass: Add symbols to global symbol table with adjusted values
 	for _, sym := range obj.Symbols.GetAll() {
 		// Skip file symbols
 		if sym.Type == STT_FILE {
 			continue
 		}
 
-		// Update symbol's section reference to point to our copy
+		// Update symbol's section reference to point to unified section and adjust value
 		if sym.Section != nil {
-			if ourSection, ok := l.getObjectSection(obj.Name, sym.Section.Name); ok {
-				sym.Section = ourSection
+			if unifiedSection, ok := l.unifiedSections[sym.Section.Name]; ok {
+				sym.Section = unifiedSection
+				// Adjust symbol value by the offset where this section's data was merged
+				sym.Value += sectionOffsets[sym.Section.Name]
 			}
 		}
 
@@ -195,19 +216,53 @@ func (l *Linker) loadObjectFile(obj ObjectFile) error {
 		}
 	}
 
-	return nil
-}
-
-// getObjectSection finds a section in the linker's section list by name.
-func (l *Linker) getObjectSection(objName, sectionName string) (*Section, bool) {
-	for _, obj := range l.objectFiles {
-		if obj.Name == objName {
-			if section, ok := obj.Sections[sectionName]; ok {
-				return section, true
+	// Third pass: Update relocation section references to point to unified sections
+	for _, rel := range obj.Relocations {
+		if rel.Section != nil {
+			if unifiedSection, ok := l.unifiedSections[rel.Section.Name]; ok {
+				rel.Section = unifiedSection
 			}
 		}
 	}
-	return nil, false
+
+	return nil
+}
+
+// getObjectSection finds or creates a unified section by name.
+// When multiple object files have sections with the same name, their data is merged.
+func (l *Linker) getObjectSection(objName, sectionName string, objSection *Section) (*Section, bool) {
+	// Check if we already have a unified section for this name
+	if unified, ok := l.unifiedSections[sectionName]; ok {
+		return unified, true
+	}
+
+	// First occurrence: use the object's section as the canonical unified section
+	// so callers/tests holding the same pointer see address updates from assignAddresses.
+	l.unifiedSections[sectionName] = objSection
+	return objSection, true
+}
+
+// mergeSectionData appends data from objSection to the unified section.
+// Returns the offset where the new data was appended (for symbol adjustment).
+func (l *Linker) mergeSectionData(sectionName string, objSection *Section) uint64 {
+	unified, ok := l.unifiedSections[sectionName]
+	if !ok {
+		return 0
+	}
+	
+	// Calculate offset where new data will be appended
+	offset := uint64(len(unified.Data))
+	
+	// Append the new section data
+	if len(objSection.Data) > 0 {
+		unified.Data = append(unified.Data, objSection.Data...)
+	}
+	
+	// Update section size
+	// Note: Size() returns the size based on symbols, so we need to track it separately
+	// For now, we'll rely on the data length
+	
+	return offset
 }
 
 // ResolveSymbols resolves undefined symbols.
@@ -248,24 +303,23 @@ func (l *Linker) ResolveSymbols() error {
 
 // assignAddresses assigns memory addresses to sections.
 func (l *Linker) assignAddresses() {
-	// Group sections by type
+	// Group sections by type - use unifiedSections, not obj.Sections
+	// Symbols point to unifiedSections, so we must use those for address assignment
 	textSections := make([]*Section, 0)
 	dataSections := make([]*Section, 0)
 	rodataSections := make([]*Section, 0)
 	bssSections := make([]*Section, 0)
 
-	for _, obj := range l.objectFiles {
-		for _, section := range obj.Sections {
-			switch section.Name {
-			case ".text":
-				textSections = append(textSections, section)
-			case ".data":
-				dataSections = append(dataSections, section)
-			case ".rodata":
-				rodataSections = append(rodataSections, section)
-			case ".bss":
-				bssSections = append(bssSections, section)
-			}
+	for _, section := range l.unifiedSections {
+		switch section.Name {
+		case ".text":
+			textSections = append(textSections, section)
+		case ".data":
+			dataSections = append(dataSections, section)
+		case ".rodata":
+			rodataSections = append(rodataSections, section)
+		case ".bss":
+			bssSections = append(bssSections, section)
 		}
 	}
 
@@ -284,7 +338,7 @@ func (l *Linker) assignAddresses() {
 
 		// Update symbol values for symbols in this section
 		for _, sym := range l.symbols.GetAll() {
-			if sym.Section != nil && sym.Section.Name == section.Name {
+			if sym.Section != nil && sym.Section == section {
 				sym.Value = uint64(int64(sym.Value) + addrDelta)
 			}
 		}
@@ -304,7 +358,7 @@ func (l *Linker) assignAddresses() {
 
 		// Update symbol values for symbols in this section
 		for _, sym := range l.symbols.GetAll() {
-			if sym.Section != nil && sym.Section.Name == section.Name {
+			if sym.Section != nil && sym.Section == section {
 				sym.Value = uint64(int64(sym.Value) + addrDelta)
 			}
 		}
@@ -324,7 +378,7 @@ func (l *Linker) assignAddresses() {
 
 		// Update symbol values for symbols in this section
 		for _, sym := range l.symbols.GetAll() {
-			if sym.Section != nil && sym.Section.Name == section.Name {
+			if sym.Section != nil && sym.Section == section {
 				sym.Value = uint64(int64(sym.Value) + addrDelta)
 			}
 		}
@@ -341,7 +395,7 @@ func (l *Linker) assignAddresses() {
 
 		// Update symbol values for symbols in this section
 		for _, sym := range l.symbols.GetAll() {
-			if sym.Section != nil && sym.Section.Name == section.Name {
+			if sym.Section != nil && sym.Section == section {
 				sym.Value = uint64(int64(sym.Value) + addrDelta)
 			}
 		}
@@ -355,6 +409,23 @@ func (l *Linker) assignAddresses() {
 
 // Relocate performs relocations.
 func (l *Linker) Relocate() error {
+	// Fix: Update relocation symbols to point to global symbol table entries
+	// This is necessary because address assignment updates global symbols,
+	// but relocations still reference local object file symbols.
+	for _, obj := range l.objectFiles {
+		for _, rel := range obj.Relocations {
+			if rel.Symbol != nil && rel.Symbol.Name != "" {
+				// Look up the symbol in the global symbol table
+				globalSym := l.symbols.Get(rel.Symbol.Name)
+				if globalSym != nil {
+					// Update the relocation to use the global symbol
+					rel.Symbol = globalSym
+				}
+			}
+		}
+	}
+	
+	// Now apply relocations with correct symbol values
 	for _, obj := range l.objectFiles {
 		for _, rel := range obj.Relocations {
 			if err := l.applyRelocation(rel); err != nil {
@@ -385,11 +456,10 @@ func (l *Linker) applyRelocation(rel *Relocation) error {
 		l.writeUint64(rel.Section.Data, rel.Offset, value)
 
 	case R_X86_64_PC32, R_X86_64_PLT32:
-		// PC-relative 32-bit relocation
-		// Formula: S + A - P
-		// S = symbol value, A = addend, P = place (address of relocation field)
-		pc := sectionAddr + rel.Offset + 4 // +4 because PC points to next instruction
-		value := int64(symbolValue) + rel.Addend - int64(pc)
+		// PC-relative 32-bit: (S + A) - P where P is the address of the first byte
+		// *after* the 32-bit field (RIP points past the displacement on x86-64).
+		p := sectionAddr + rel.Offset + 4
+		value := int64(symbolValue) + rel.Addend - int64(p)
 		l.writeInt32(rel.Section.Data, rel.Offset, int32(value))
 
 	case R_X86_64_32, R_X86_64_32S:
@@ -429,16 +499,16 @@ func (l *Linker) writeInt32(data []byte, offset uint64, value int32) {
 func (l *Linker) Emit() ([]byte, error) {
 	var buf bytes.Buffer
 
+	// Create program headers first to know the count
+	programHeaders := l.createProgramHeaders()
+
 	// Create ELF header
 	elfHeader := NewELFHeader()
 	elfHeader.Phoff = uint64(ELFHeaderSize())
 	elfHeader.Shoff = 0 // Will be set later
-	elfHeader.Phnum = 3 // NULL, LOAD (text), LOAD (data)
+	elfHeader.Phnum = uint16(len(programHeaders)) // Dynamic based on actual segments
 	elfHeader.Shnum = 0 // Will be set later
 	elfHeader.Shstrndx = 0 // Will be set later
-
-	// Create program headers
-	programHeaders := l.createProgramHeaders()
 
 	// Calculate offsets
 	headerSize := uint64(ELFHeaderSize())
@@ -517,40 +587,51 @@ func (l *Linker) createProgramHeaders() []*ProgramHeader {
 		}
 	}
 
+	// Build list of non-NULL program headers first
+	var loadPHs []*ProgramHeader
+	
 	// TEXT segment
 	var textPH *ProgramHeader
 	if textStart > 0 {
 		textPH = NewLoadProgramHeader(PF_R | PF_X)
-		textPH.Offset = uint64(ELFHeaderSize() + 3*ProgramHeaderSize())
 		textPH.Vaddr = textStart
 		textPH.Paddr = textStart
 		textPH.Filesz = textSize
 		textPH.Memsz = textSize
 		textPH.Align = 0x1000
-		phs = append(phs, textPH)
+		loadPHs = append(loadPHs, textPH)
 	}
 
-	// DATA segment
-	if dataStart > 0 {
+	// DATA segment - only create if there's actual data
+	if dataStart > 0 && dataSize > 0 {
 		dataPH := NewLoadProgramHeader(PF_R | PF_W)
-		if textPH != nil {
-			dataPH.Offset = textPH.Offset + textSize
-		} else {
-			dataPH.Offset = uint64(ELFHeaderSize() + 3*ProgramHeaderSize())
-		}
 		dataPH.Vaddr = dataStart
 		dataPH.Paddr = dataStart
 		dataPH.Filesz = dataSize
 		dataPH.Memsz = dataSize
 		dataPH.Align = 0x1000
-		phs = append(phs, dataPH)
+		loadPHs = append(loadPHs, dataPH)
 	}
 
-	// Add NULL program header at the beginning
-	nullPH := &ProgramHeader{Type: PT_NULL}
-	phs = append([]*ProgramHeader{nullPH}, phs...)
+	// Now calculate offsets based on actual number of headers
+	// Offset for first LOAD segment = ELF header + all program headers
+	// Note: We add 1 for the NULL program header that's always first
+	baseOffset := uint64(ELFHeaderSize() + (len(loadPHs)+1)*ProgramHeaderSize())
 
-	return phs
+	for i, ph := range loadPHs {
+		if i == 0 {
+			ph.Offset = baseOffset
+		} else {
+			// Subsequent segments follow the previous one
+			prevPH := loadPHs[i-1]
+			ph.Offset = prevPH.Offset + prevPH.Filesz
+		}
+		phs = append(phs, ph)
+	}
+
+	// Leading NULL program header (conventional ELF layout)
+	nullPH := &ProgramHeader{Type: PT_NULL}
+	return append([]*ProgramHeader{nullPH}, phs...)
 }
 
 // createSectionHeaders creates section headers and combines section data.

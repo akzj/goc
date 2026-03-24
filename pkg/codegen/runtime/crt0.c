@@ -23,4 +23,5 @@ extern void exit(int code);
 /* 
  * Note: _start is defined in crt0.S assembly file.
  * The assembly stub extracts argc/argv from stack and calls main().
+ * This file provides the external declarations needed by the assembly code.
  */

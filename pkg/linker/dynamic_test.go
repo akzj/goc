@@ -638,8 +638,8 @@ func TestRelocationTypeConstants(t *testing.T) {
 	if R_X86_64_PC32 != 2 {
 		t.Errorf("R_X86_64_PC32 = %d, want 2", R_X86_64_PC32)
 	}
-	if R_X86_64_PLT32 != 42 {
-		t.Errorf("R_X86_64_PLT32 = %d, want 42", R_X86_64_PLT32)
+	if R_X86_64_PLT32 != 4 {
+		t.Errorf("R_X86_64_PLT32 = %d, want 4", R_X86_64_PLT32)
 	}
 }
 
