@@ -919,14 +919,14 @@ func (p *Parser) parsePostfix() Expr {
 func (p *Parser) parseArgumentList() []Expr {
 	args := []Expr{}
 	
-	if p.match(lexer.RPAREN) {
+	if p.current().Type == lexer.RPAREN {
 		return args
 	}
 	
 	args = append(args, p.ParseExpression())
 	
-	for p.match(lexer.COMMA) {
-		p.advance()
+	for p.current().Type == lexer.COMMA {
+		p.advance()  // Consume comma
 		args = append(args, p.ParseExpression())
 	}
 	

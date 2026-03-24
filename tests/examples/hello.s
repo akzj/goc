@@ -1,0 +1,2 @@
+	.file	"source.c"
+	.text

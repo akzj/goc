@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/akzj/goc/pkg/cli"
 	"github.com/akzj/goc/pkg/lexer"
 )
 
@@ -29,9 +30,10 @@ func main() {
 	case "help", "--help", "-h":
 		printUsage()
 	case "compile":
-		// TODO: Implement compilation
-		fmt.Println("Compilation not yet implemented")
-		os.Exit(1)
+		if err := cli.CompileCommand(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	case "tokenize":
 		handleTokenizeCommand(os.Args[2:])
 	case "parse":

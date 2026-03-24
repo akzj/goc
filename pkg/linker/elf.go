@@ -201,30 +201,30 @@ func ELF64_ST_TYPE(info byte) byte {
 // Relocation Constants (x86-64)
 // ============================================================================
 
-// x86-64 relocation types
+// x86-64 relocation types (from System V AMD64 ABI)
 const (
-	R_X86_64_NONE       = 0  // No relocation
-	R_X86_64_64         = 1  // Direct 64-bit
-	R_X86_64_32         = 2  // Direct 32-bit
-	R_X86_64_32S        = 3  // Direct 32-bit sign-extended
-	R_X86_64_16         = 4  // Direct 16-bit
-	R_X86_64_PC16       = 5  // PC-relative 16-bit
-	R_X86_64_8          = 6  // Direct 8-bit
-	R_X86_64_PC8        = 7  // PC-relative 8-bit
-	R_X86_64_PC32       = 2  // PC-relative 32-bit
-	R_X86_64_PLT32      = 42 // PC-relative 32-bit (PLT)
-	R_X86_64_GOT32      = 9  // 32-bit GOT entry
-	R_X86_64_GOT64      = 24 // 64-bit GOT entry
-	R_X86_64_GOTPCREL   = 9  // PC-relative GOT entry
+	R_X86_64_NONE        = 0  // No relocation
+	R_X86_64_64          = 1  // Direct 64-bit
+	R_X86_64_PC32        = 2  // PC-relative 32-bit
+	R_X86_64_32          = 3  // Direct 32-bit
+	R_X86_64_32S         = 4  // Direct 32-bit sign-extended
+	R_X86_64_16          = 5  // Direct 16-bit
+	R_X86_64_PC16        = 6  // PC-relative 16-bit
+	R_X86_64_8           = 7  // Direct 8-bit
+	R_X86_64_PC8         = 8  // PC-relative 8-bit
+	R_X86_64_PLT32       = 42 // PC-relative 32-bit (PLT)
+	R_X86_64_GOT32       = 9  // 32-bit GOT entry
+	R_X86_64_GOT64       = 24 // 64-bit GOT entry
+	R_X86_64_GOTPCREL    = 9  // PC-relative GOT entry
 	R_X86_64_REX_GOTPCRELX = 42 // GOTPCRELX with REX prefix
-	R_X86_64_GOTTPOFF   = 29 // GOT-relative thread offset
-	R_X86_64_TPOFF32    = 26 // Thread offset 32-bit
-	R_X86_64_TLSGD      = 25 // TLS general dynamic
-	R_X86_64_TLSLD      = 26 // TLS local dynamic
-	R_X86_64_DTPOFF32   = 27 // DTP-relative offset 32-bit
-	R_X86_64_DTPOFF64   = 28 // DTP-relative offset 64-bit
-	R_X86_64_GOTPC32    = 32 // PC-relative GOT base
-	R_X86_64_GOTPCRELX  = 42 // GOTPCRELX
+	R_X86_64_GOTTPOFF    = 29 // GOT-relative thread offset
+	R_X86_64_TPOFF32     = 26 // Thread offset 32-bit
+	R_X86_64_TLSGD       = 25 // TLS general dynamic
+	R_X86_64_TLSLD       = 26 // TLS local dynamic
+	R_X86_64_DTPOFF32    = 27 // DTP-relative offset 32-bit
+	R_X86_64_DTPOFF64    = 28 // DTP-relative offset 64-bit
+	R_X86_64_GOTPC32     = 32 // PC-relative GOT base
+	R_X86_64_GOTPCRELX   = 42 // GOTPCRELX
 )
 
 // ELF64_R_INFO creates relocation info from symbol and type.

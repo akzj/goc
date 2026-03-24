@@ -465,25 +465,27 @@ func (p *Parser) parseParameterList() []*ParamDecl {
 	
 	// Check for void parameter list
 	if p.match(lexer.VOID) {
-		p.advance()
 		return params
 	}
 	
 	// Check for empty parameter list (K&R style)
-	if p.match(lexer.RPAREN) {
-		return params
+	// Use peek (current) instead of match to avoid consuming ')'
+	if p.current().Type == lexer.RPAREN {
+		return params  // Don't consume, let caller consume it
 	}
 	
 	// Parse parameters
-	for !p.isEOF() && !p.match(lexer.RPAREN) {
+	// Use current().Type != RPAREN instead of !match(RPAREN) to avoid consuming ')'
+	for !p.isEOF() && p.current().Type != lexer.RPAREN {
 		param := p.parseParameter()
 		if param != nil {
 			params = append(params, param)
 		}
 		
-		if !p.match(lexer.COMMA) {
+		if p.current().Type != lexer.COMMA {
 			break
 		}
+		p.advance()  // Consume comma
 	}
 	
 	return params

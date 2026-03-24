@@ -1,0 +1,11 @@
+// Test if-else control flow
+int main() {
+    int x = 10;
+    int result;
+    if (x > 5) {
+        result = 1;
+    } else {
+        result = 0;
+    }
+    return result;
+}

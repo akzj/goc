@@ -3,11 +3,11 @@
 package ir
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/akzj/goc/pkg/parser"
 )
-
-// TODO: Implement IR package
-// Reference: docs/architecture-design-phases-2-7.md Section 5
 
 // IR represents the intermediate representation.
 type IR struct {
@@ -79,4 +79,101 @@ type Constant struct {
 	Name string
 	// Value is the constant value.
 	Value interface{}
+}
+
+// String returns a string representation of the IR.
+func (ir *IR) String() string {
+	var sb strings.Builder
+	sb.WriteString("IR {\n")
+
+	// Emit globals
+	if len(ir.Globals) > 0 {
+		sb.WriteString("  Globals:\n")
+		for _, g := range ir.Globals {
+			sb.WriteString(fmt.Sprintf("    %s\n", g.String()))
+		}
+	}
+
+	// Emit constants
+	if len(ir.Constants) > 0 {
+		sb.WriteString("  Constants:\n")
+		for _, c := range ir.Constants {
+			sb.WriteString(fmt.Sprintf("    %s\n", c.String()))
+		}
+	}
+
+	// Emit functions
+	if len(ir.Functions) > 0 {
+		sb.WriteString("  Functions:\n")
+		for _, fn := range ir.Functions {
+			sb.WriteString(fmt.Sprintf("    %s\n", fn.String()))
+		}
+	}
+
+	sb.WriteString("}")
+	return sb.String()
+}
+
+// String returns a string representation of the function.
+func (fn *Function) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Function %s(", fn.Name))
+	for i, param := range fn.Params {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(param.String())
+	}
+	sb.WriteString(")")
+	if fn.ReturnType != nil {
+		sb.WriteString(fmt.Sprintf(" -> %s", fn.ReturnType.String()))
+	}
+	sb.WriteString(" {\n")
+	for _, block := range fn.Blocks {
+		sb.WriteString(fmt.Sprintf("    %s\n", block.String()))
+	}
+	sb.WriteString("  }")
+	return sb.String()
+}
+
+// String returns a string representation of the basic block.
+func (bb *BasicBlock) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Block %s:", bb.Label))
+	for _, instr := range bb.Instrs {
+		sb.WriteString(fmt.Sprintf("\n      %s", instr.String()))
+	}
+	return sb.String()
+}
+
+// String returns a string representation of the parameter.
+func (p *Param) String() string {
+	if p.Type != nil {
+		return fmt.Sprintf("%s %s", p.Type.String(), p.Name)
+	}
+	return p.Name
+}
+
+// String returns a string representation of the local variable.
+func (lv *LocalVar) String() string {
+	if lv.Type != nil {
+		return fmt.Sprintf("%s %s (offset: %d)", lv.Type.String(), lv.Name, lv.StackOffset)
+	}
+	return fmt.Sprintf("%s (offset: %d)", lv.Name, lv.StackOffset)
+}
+
+// String returns a string representation of the global variable.
+func (gv *GlobalVar) String() string {
+	if gv.Type != nil {
+		if gv.Init != nil {
+			return fmt.Sprintf("global %s %s = %s", gv.Type.String(), gv.Name, gv.Init.String())
+		}
+		return fmt.Sprintf("global %s %s", gv.Type.String(), gv.Name)
+	}
+	return fmt.Sprintf("global %s", gv.Name)
+}
+
+// String returns a string representation of the constant.
+func (c *Constant) String() string {
+	return fmt.Sprintf("const %s = %v", c.Name, c.Value)
 }
