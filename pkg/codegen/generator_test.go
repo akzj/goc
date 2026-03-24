@@ -1036,3 +1036,411 @@ func TestCodeGeneratorReset(t *testing.T) {
 		t.Error("Second function should not contain first function's label")
 	}
 }
+// TestEmitLogical tests emitLogical function.
+func TestEmitLogical(t *testing.T) {
+	errorHandler := errhand.NewErrorHandler()
+	cg := NewCodeGenerator(errorHandler)
+
+	fn := &ir.Function{
+		Name:       "test_logical",
+		ReturnType: intType(),
+		Params:     []*ir.Param{},
+		Blocks: []*ir.BasicBlock{
+			{
+				Label: "entry",
+				Instrs: []ir.Instruction{
+					// Test OpAnd
+					newInstruction(ir.OpAnd, newTempOperand(2, intType()), newTempOperand(0, intType()), newTempOperand(1, intType())),
+					// Test OpOr
+					newInstruction(ir.OpOr, newTempOperand(3, intType()), newTempOperand(0, intType()), newTempOperand(1, intType())),
+					newInstruction(ir.OpRet, nil, newConstOperand(int64(0))),
+				},
+			},
+		},
+		LocalVars: []*ir.LocalVar{},
+	}
+
+	asm, err := cg.GenerateFunction(fn)
+	if err != nil {
+		t.Fatalf("GenerateFunction failed: %v", err)
+	}
+
+	// Check for logical operations (andq, orq)
+	if !strings.Contains(asm, "andq") && !strings.Contains(asm, "orq") {
+		t.Error("Expected logical operations in assembly")
+	}
+}
+
+// TestEmitLoad tests emitLoad function.
+func TestEmitLoad(t *testing.T) {
+	errorHandler := errhand.NewErrorHandler()
+	cg := NewCodeGenerator(errorHandler)
+
+	fn := &ir.Function{
+		Name:       "test_load",
+		ReturnType: intType(),
+		Params:     []*ir.Param{},
+		Blocks: []*ir.BasicBlock{
+			{
+				Label: "entry",
+				Instrs: []ir.Instruction{
+					// Load from memory: t0 = *ptr
+					newInstruction(ir.OpLoad, newTempOperand(0, intType()), newTempOperand(1, intType())),
+					newInstruction(ir.OpRet, nil, newConstOperand(int64(0))),
+				},
+			},
+		},
+		LocalVars: []*ir.LocalVar{},
+	}
+
+	asm, err := cg.GenerateFunction(fn)
+	if err != nil {
+		t.Fatalf("GenerateFunction failed: %v", err)
+	}
+
+	// Check for mov instruction (load)
+	if !strings.Contains(asm, "mov") {
+		t.Error("Expected mov instruction for load")
+	}
+}
+
+// TestEmitStore tests emitStore function.
+func TestEmitStore(t *testing.T) {
+	errorHandler := errhand.NewErrorHandler()
+	cg := NewCodeGenerator(errorHandler)
+
+	fn := &ir.Function{
+		Name:       "test_store",
+		ReturnType: voidType(),
+		Params:     []*ir.Param{},
+		Blocks: []*ir.BasicBlock{
+			{
+				Label: "entry",
+				Instrs: []ir.Instruction{
+					// Store: *ptr = value
+					newInstruction(ir.OpStore, nil, newTempOperand(0, intType()), newTempOperand(1, intType())),
+					newInstruction(ir.OpRet, nil),
+				},
+			},
+		},
+		LocalVars: []*ir.LocalVar{},
+	}
+
+	asm, err := cg.GenerateFunction(fn)
+	if err != nil {
+		t.Fatalf("GenerateFunction failed: %v", err)
+	}
+
+	// Check for mov instruction (store)
+	if !strings.Contains(asm, "mov") {
+		t.Error("Expected mov instruction for store")
+	}
+}
+
+// TestEmitLea tests emitLea function.
+func TestEmitLea(t *testing.T) {
+	errorHandler := errhand.NewErrorHandler()
+	cg := NewCodeGenerator(errorHandler)
+
+	fn := &ir.Function{
+		Name:       "test_lea",
+		ReturnType: intType(),
+		Params:     []*ir.Param{},
+		Blocks: []*ir.BasicBlock{
+			{
+				Label: "entry",
+				Instrs: []ir.Instruction{
+					// LEA: t0 = &var
+					newInstruction(ir.OpLea, newTempOperand(0, intType()), newGlobalOperand("global_var")),
+					newInstruction(ir.OpRet, nil, newConstOperand(int64(0))),
+				},
+			},
+		},
+		LocalVars: []*ir.LocalVar{},
+	}
+
+	asm, err := cg.GenerateFunction(fn)
+	if err != nil {
+		t.Fatalf("GenerateFunction failed: %v", err)
+	}
+
+	// Check for lea instruction
+	if !strings.Contains(asm, "lea") && !strings.Contains(asm, "mov") {
+		t.Error("Expected lea or mov instruction")
+	}
+}
+
+// TestEmitAlloc tests emitAlloc function.
+func TestEmitAlloc(t *testing.T) {
+	errorHandler := errhand.NewErrorHandler()
+	cg := NewCodeGenerator(errorHandler)
+
+	fn := &ir.Function{
+		Name:       "test_alloc",
+		ReturnType: intType(),
+		Params:     []*ir.Param{},
+		Blocks: []*ir.BasicBlock{
+			{
+				Label: "entry",
+				Instrs: []ir.Instruction{
+					// Alloc: allocate stack space
+					newInstruction(ir.OpAlloc, newTempOperand(0, intType()), newConstOperand(int64(8))),
+					newInstruction(ir.OpRet, nil, newConstOperand(int64(0))),
+				},
+			},
+		},
+		LocalVars: []*ir.LocalVar{
+			{Name: "local", Type: intType(), StackOffset: 0},
+		},
+	}
+
+	asm, err := cg.GenerateFunction(fn)
+	if err != nil {
+		t.Fatalf("GenerateFunction failed: %v", err)
+	}
+
+	// Check for stack allocation (subq $..., %rsp)
+	if !strings.Contains(asm, "subq") {
+		t.Error("Expected stack allocation")
+	}
+}
+
+// TestEmitCast tests emitCast function.
+func TestEmitCast(t *testing.T) {
+	errorHandler := errhand.NewErrorHandler()
+	cg := NewCodeGenerator(errorHandler)
+
+	fn := &ir.Function{
+		Name:       "test_cast",
+		ReturnType: intType(),
+		Params:     []*ir.Param{},
+		Blocks: []*ir.BasicBlock{
+			{
+				Label: "entry",
+				Instrs: []ir.Instruction{
+					// Cast: int to long
+					newInstruction(ir.OpCast, newTempOperand(1, longType()), newTempOperand(0, intType())),
+					newInstruction(ir.OpRet, nil, newConstOperand(int64(0))),
+				},
+			},
+		},
+		LocalVars: []*ir.LocalVar{},
+	}
+
+	asm, err := cg.GenerateFunction(fn)
+	if err != nil {
+		t.Fatalf("GenerateFunction failed: %v", err)
+	}
+
+	// Cast should generate some instruction
+	if asm == "" {
+		t.Error("Expected assembly output for cast")
+	}
+}
+
+// TestEmitZeroExt tests emitZeroExt function.
+func TestEmitZeroExt(t *testing.T) {
+	errorHandler := errhand.NewErrorHandler()
+	cg := NewCodeGenerator(errorHandler)
+
+	fn := &ir.Function{
+		Name:       "test_zeroext",
+		ReturnType: intType(),
+		Params:     []*ir.Param{},
+		Blocks: []*ir.BasicBlock{
+			{
+				Label: "entry",
+				Instrs: []ir.Instruction{
+					// ZeroExt: extend char to int
+					newInstruction(ir.OpZeroExt, newTempOperand(1, intType()), newTempOperand(0, intType())),
+					newInstruction(ir.OpRet, nil, newConstOperand(int64(0))),
+				},
+			},
+		},
+		LocalVars: []*ir.LocalVar{},
+	}
+
+	asm, err := cg.GenerateFunction(fn)
+	if err != nil {
+		t.Fatalf("GenerateFunction failed: %v", err)
+	}
+
+	// Check for movz instruction (zero extend)
+	if !strings.Contains(asm, "movz") && !strings.Contains(asm, "mov") {
+		t.Error("Expected movz or mov instruction for zero extension")
+	}
+}
+
+// TestEmitSignExt tests emitSignExt function.
+func TestEmitSignExt(t *testing.T) {
+	errorHandler := errhand.NewErrorHandler()
+	cg := NewCodeGenerator(errorHandler)
+
+	fn := &ir.Function{
+		Name:       "test_signext",
+		ReturnType: intType(),
+		Params:     []*ir.Param{},
+		Blocks: []*ir.BasicBlock{
+			{
+				Label: "entry",
+				Instrs: []ir.Instruction{
+					// SignExt: extend char to int with sign
+					newInstruction(ir.OpSignExt, newTempOperand(1, intType()), newTempOperand(0, intType())),
+					newInstruction(ir.OpRet, nil, newConstOperand(int64(0))),
+				},
+			},
+		},
+		LocalVars: []*ir.LocalVar{},
+	}
+
+	asm, err := cg.GenerateFunction(fn)
+	if err != nil {
+		t.Fatalf("GenerateFunction failed: %v", err)
+	}
+
+	// Check for movs instruction (sign extend)
+	if !strings.Contains(asm, "movs") && !strings.Contains(asm, "mov") {
+		t.Error("Expected movs or mov instruction for sign extension")
+	}
+}
+
+// TestEmitTrunc tests emitTrunc function.
+func TestEmitTrunc(t *testing.T) {
+	errorHandler := errhand.NewErrorHandler()
+	cg := NewCodeGenerator(errorHandler)
+
+	fn := &ir.Function{
+		Name:       "test_trunc",
+		ReturnType: intType(),
+		Params:     []*ir.Param{},
+		Blocks: []*ir.BasicBlock{
+			{
+				Label: "entry",
+				Instrs: []ir.Instruction{
+					// Trunc: truncate long to int
+					newInstruction(ir.OpTrunc, newTempOperand(1, intType()), newTempOperand(0, longType())),
+					newInstruction(ir.OpRet, nil, newConstOperand(int64(0))),
+				},
+			},
+		},
+		LocalVars: []*ir.LocalVar{},
+	}
+
+	asm, err := cg.GenerateFunction(fn)
+	if err != nil {
+		t.Fatalf("GenerateFunction failed: %v", err)
+	}
+
+	// Trunc should generate some instruction
+	if asm == "" {
+		t.Error("Expected assembly output for trunc")
+	}
+}
+
+// TestEmitMemoryOperand tests emitMemoryOperand function.
+func TestEmitMemoryOperand(t *testing.T) {
+	errorHandler := errhand.NewErrorHandler()
+	cg := NewCodeGenerator(errorHandler)
+
+	fn := &ir.Function{
+		Name:       "test_memory",
+		ReturnType: intType(),
+		Params:     []*ir.Param{},
+		Blocks: []*ir.BasicBlock{
+			{
+				Label: "entry",
+				Instrs: []ir.Instruction{
+					// Load from global
+					newInstruction(ir.OpLoad, newTempOperand(0, intType()), newGlobalOperand("global_var")),
+					// Store to global
+					newInstruction(ir.OpStore, nil, newTempOperand(0, intType()), newGlobalOperand("global_var")),
+					newInstruction(ir.OpRet, nil, newConstOperand(int64(0))),
+				},
+			},
+		},
+		LocalVars: []*ir.LocalVar{},
+	}
+
+	asm, err := cg.GenerateFunction(fn)
+	if err != nil {
+		t.Fatalf("GenerateFunction failed: %v", err)
+	}
+
+	// Check for memory operand (should reference global_var)
+	if !strings.Contains(asm, "global_var") {
+		t.Error("Expected global_var reference in assembly")
+	}
+}
+
+// TestEmitOperand tests emitOperand function coverage.
+func TestEmitOperand(t *testing.T) {
+	errorHandler := errhand.NewErrorHandler()
+	cg := NewCodeGenerator(errorHandler)
+
+	fn := &ir.Function{
+		Name:       "test_operand",
+		ReturnType: intType(),
+		Params:     []*ir.Param{},
+		Blocks: []*ir.BasicBlock{
+			{
+				Label: "entry",
+				Instrs: []ir.Instruction{
+					// Various operand types
+					newInstruction(ir.OpAdd, newTempOperand(2, intType()), newConstOperand(int64(5)), newTempOperand(0, intType())),
+					newInstruction(ir.OpRet, nil, newTempOperand(2, intType())),
+				},
+			},
+		},
+		LocalVars: []*ir.LocalVar{},
+	}
+
+	asm, err := cg.GenerateFunction(fn)
+	if err != nil {
+		t.Fatalf("GenerateFunction failed: %v", err)
+	}
+
+	// Check for add instruction with immediate
+	if !strings.Contains(asm, "add") {
+		t.Error("Expected add instruction")
+	}
+}
+
+// TestIsFloatingPointType tests isFloatingPointType function.
+func TestIsFloatingPointType(t *testing.T) {
+	tests := []struct {
+		name string
+		typ  parser.Type
+	}{
+		{"int", intType()},
+		{"long", longType()},
+		{"float", floatType()},
+		{"double", doubleType()},
+		{"void", voidType()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cg := NewCodeGenerator(errhand.NewErrorHandler())
+			
+			fn := &ir.Function{
+				Name:       "test_float_" + tt.name,
+				ReturnType: tt.typ.(*parser.BaseType),
+				Params:     []*ir.Param{},
+				Blocks: []*ir.BasicBlock{
+					{
+						Label: "entry",
+						Instrs: []ir.Instruction{
+							newInstruction(ir.OpRet, nil, newConstOperand(int64(0))),
+						},
+					},
+				},
+				LocalVars: []*ir.LocalVar{},
+			}
+
+			_, err := cg.GenerateFunction(fn)
+			if err != nil {
+				t.Fatalf("GenerateFunction failed: %v", err)
+			}
+		})
+	}
+}

@@ -601,9 +601,9 @@ func (p *Parser) isDeclaration() bool {
 	// Identifier (could be typedef name or K&R function declaration)
 	if t == lexer.IDENT {
 		// Look ahead to determine if it's a declaration
-		// If followed by DOT or ARROW, it's member access (expression), not a declaration
+		// If followed by DOT, ARROW, or LPAREN, it's an expression, not a declaration
 		next := p.peek(1)
-		if next.Type == lexer.DOT || next.Type == lexer.ARROW {
+		if next.Type == lexer.DOT || next.Type == lexer.ARROW || next.Type == lexer.LPAREN {
 			return false
 		}
 		return true

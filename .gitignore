@@ -17,6 +17,8 @@ debug_parser_main.go
 *.out
 coverage.txt
 coverage.html
+coverage_report.html
+master.zip
 
 # Dependency directories
 vendor/
@@ -44,6 +46,7 @@ Thumbs.db
 debug
 __debug_bin
 redis-source
+lua-master
 # Temporary files
 tmp/
 temp/

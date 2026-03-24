@@ -10,6 +10,9 @@ import (
 	"github.com/akzj/goc/pkg/lexer"
 )
 
+// exitFunc allows tests to override os.Exit for testing
+var exitFunc = os.Exit
+
 // Version information
 const (
 	Version     = "0.1.0"
@@ -79,7 +82,7 @@ func main() {
 	// Run the CLI
 	if err := cliApp.Run(os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		exitFunc(1)
 	}
 }
 
@@ -89,7 +92,7 @@ func handleCompileCommand(args []string, flags map[string]interface{}) error {
 		fmt.Fprintln(os.Stderr, "Error: no input file specified")
 		fmt.Fprintf(os.Stderr, "Usage: %s compile <source.c> [options]\n", Name)
 		fmt.Fprintln(os.Stderr, "Run 'goc help compile' for more information.")
-		os.Exit(1)
+		exitFunc(1)
 	}
 
 	var compileArgs []string
@@ -132,14 +135,14 @@ func handleTokenizeCommand(args []string, flags map[string]interface{}) error {
 	if opts.filePath == "" {
 		fmt.Fprintln(os.Stderr, "Error: no input file specified")
 		fmt.Fprintln(os.Stderr, "Usage: goc tokenize <file.c> [--format=default|json|compact]")
-		os.Exit(1)
+		exitFunc(1)
 	}
 
 	// Read the source file
 	source, err := os.ReadFile(opts.filePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading file '%s': %v\n", opts.filePath, err)
-		os.Exit(1)
+		exitFunc(1)
 	}
 
 	// Create lexer and tokenize
@@ -182,11 +185,11 @@ func handleParseCommand(args []string, flags map[string]interface{}) error {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Error: no input file specified")
 		fmt.Fprintln(os.Stderr, "Usage: goc parse <file.c>")
-		os.Exit(1)
+		exitFunc(1)
 	}
 
 	fmt.Println("Parsing not yet implemented")
-	os.Exit(1)
+	exitFunc(1)
 	return nil
 }
 
@@ -234,7 +237,7 @@ func outputTokensJSON(tokens []lexer.Token) {
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(jsonTokens); err != nil {
 		fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-		os.Exit(1)
+		exitFunc(1)
 	}
 }
 

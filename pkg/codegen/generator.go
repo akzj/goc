@@ -207,6 +207,11 @@ func (cg *CodeGenerator) emitFunctionPrologue(fn *ir.Function) {
 //	leave
 //	ret
 func (cg *CodeGenerator) emitFunctionEpilogue(fn *ir.Function) {
+	// Emit epilogue label (target for return jumps)
+	// Use function-specific label to avoid conflicts between functions
+	cg.output.WriteString(".Lepilogue_")
+	cg.output.WriteString(fn.Name)
+	cg.output.WriteString(":\n")
 	cg.output.WriteString("\tleave\n")
 	cg.output.WriteString("\t.cfi_def_cfa 7, 8\n")
 	cg.output.WriteString("\tret\n")
@@ -812,8 +817,10 @@ func (cg *CodeGenerator) emitRet(instr ir.Instruction) {
 		cg.regAlloc.FreeOperand(retval)
 	}
 
-	// Jump to epilogue
-	cg.output.WriteString("\tjmp\t.Lepilogue\n")
+	// Jump to function-specific epilogue
+	cg.output.WriteString("\tjmp\t.Lepilogue_")
+	cg.output.WriteString(cg.currentFunc.Name)
+	cg.output.WriteString("\n")
 }
 
 // emitLabel emits a label.
